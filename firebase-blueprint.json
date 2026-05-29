@@ -1,0 +1,286 @@
+{
+  "entities": {
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Teacher profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Class": {
+      "title": "Class",
+      "description": "Educational class information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "teacherIds": { "type": "array", "items": { "type": "string" } },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "name", "createdBy"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student in a class",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "classId": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "name", "classId"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "Subject within a class taught by a teacher",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "classId": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "name", "teacherId", "classId"]
+    },
+    "Skill": {
+      "title": "Skill",
+      "description": "Educational skill to be assessed",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "subjectId": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "name", "questions", "subjectId"]
+    },
+    "Quiz": {
+      "title": "Quiz",
+      "description": "Multiple choice quiz",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "stageId": { "type": "string" },
+        "gradeId": { "type": "string" },
+        "classIds": { "type": "array", "items": { "type": "string" } },
+        "subjectIds": { "type": "array", "items": { "type": "string" } },
+        "imageUrl": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string" },
+              "options": { "type": "array", "items": { "type": "string" } },
+              "correctAnswerIndex": { "type": "number" },
+              "imageUrl": { "type": "string" },
+              "optionImages": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "questions"]
+    },
+    "QuizResult": {
+      "title": "QuizResult",
+      "description": "Result of a student quiz session",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "quizId": { "type": "string" },
+        "score": { "type": "number" },
+        "answers": { "type": "array", "items": { "type": "number" } },
+        "subjectId": { "type": "string" },
+        "subjectIds": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "quizId", "score", "answers", "updatedAt"]
+    },
+    "Evaluation": {
+      "title": "Evaluation",
+      "description": "Student skill evaluation result",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "skillId": { "type": "string" },
+        "score": {
+          "type": "string",
+          "enum": ["mastered", "advanced", "accepted", "weak", "very-weak"]
+        },
+        "note": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "evaluatorId": { "type": "string" }
+      },
+      "required": ["id", "studentId", "skillId", "score", "academicYear", "updatedAt", "evaluatorId"]
+    },
+    "Grade": {
+      "title": "Grade",
+      "description": "Educational grade/level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Rubric": {
+      "title": "Rubric",
+      "description": "Rubric for evaluations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "categories": { "type": "array" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["name", "categories"]
+    },
+    "Visit": {
+      "title": "Visit",
+      "description": "Supervisor visits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "targetClassId": { "type": "string" },
+        "rubricId": { "type": "string" },
+        "date": { "type": "string" },
+        "notes": { "type": "string" },
+        "lessonPeriod": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "lessonTitle": { "type": "string" },
+        "supervisorName": { "type": "string" },
+        "selectedStudentIds": { "type": "array" },
+        "studentQuizScores": { "type": "object" },
+        "quizText": { "type": "string" },
+        "quizMaxScore": { "type": "number" },
+        "quizId": { "type": "string" },
+        "quizUrl": { "type": "string" },
+        "evaluationData": { "type": "object" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["teacherId", "date"]
+    },
+    "ExternalProfile": {
+      "title": "ExternalProfile",
+      "description": "Profile for ID-based access",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["teacher", "supervisor"] },
+        "linkedTeacherId": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "role", "createdAt"]
+    },
+    "QuizSignature": {
+      "title": "QuizSignature",
+      "description": "Signature record of a teacher reviewing a quiz",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "quizId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "signed": { "type": "boolean" },
+        "signedAt": { "type": "string", "format": "date-time" },
+        "signatureData": { "type": "string" },
+        "signatureText": { "type": "string" }
+      },
+      "required": ["id", "quizId", "teacherId", "teacherName", "signed", "signedAt"]
+    }
+  },
+  "firestore": {
+    "/externalProfiles/{profileId}": {
+      "schema": "ExternalProfile",
+      "description": "External user profiles for ID-based login"
+    },
+    "/teachers/{teacherId}": {
+      "schema": "Teacher",
+      "description": "Teacher profiles"
+    },
+    "/grades/{gradeId}": {
+      "schema": "Grade",
+      "description": "Educational grades"
+    },
+    "/classes/{classId}": {
+      "schema": "Class",
+      "description": "Classes"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Students"
+    },
+    "/subjects/{subjectId}": {
+      "schema": "Subject",
+      "description": "Subjects"
+    },
+    "/skills/{skillId}": {
+      "schema": "Skill",
+      "description": "Skills"
+    },
+    "/quizzes/{quizId}": {
+      "schema": "Quiz",
+      "description": "Quizzes"
+    },
+    "/quizResults/{resultId}": {
+      "schema": "QuizResult",
+      "description": "Quiz results"
+    },
+    "/evaluations/{evaluationId}": {
+      "schema": "Evaluation",
+      "description": "Evaluations"
+    },
+    "/rubrics/{rubricId}": {
+      "schema": "Rubric",
+      "description": "Rubrics"
+    },
+    "/visits/{visitId}": {
+      "schema": "Visit",
+      "description": "Visits"
+    },
+    "/quizSignatures/{signatureId}": {
+      "schema": "QuizSignature",
+      "description": "Signatures certifying teacher review of quizzes"
+    }
+  }
+}

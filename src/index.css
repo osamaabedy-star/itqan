@@ -1,0 +1,281 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@400;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", "IBM Plex Sans Arabic", sans-serif;
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+  --radius-4xl: 2.5rem;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased overflow-x-hidden transition-colors duration-300;
+}
+
+h1, h2, h3, .font-black {
+  @apply font-black tracking-tight;
+}
+
+/* Custom shadow for theme */
+.shadow-minimal {
+  box-shadow: 0 10px 40px -10px rgba(79, 70, 229, 0.08);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media print {
+  body {
+    background-color: white !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* ==========================================================================
+   THEMED OVERRIDES ENGINE (Dark and Calm Modes)
+   This system intercepts Tailwind utility classes and skins them adaptively.
+   ========================================================================== */
+
+/* Theme variables */
+:root {
+  --theme-bg-page: #f8fafc;
+  --theme-bg-card: #ffffff;
+  --theme-bg-hover: #f1f5f9;
+  --theme-border: #e2e8f0;
+  --theme-text-primary: #0f172a;
+  --theme-text-muted: #64748b;
+  --theme-text-light: #94a3b8;
+  --theme-shadow: 0 10px 40px -10px rgba(79, 70, 229, 0.08);
+}
+
+.theme-dark {
+  --theme-bg-page: #0a0e1a;
+  --theme-bg-card: #121826;
+  --theme-bg-hover: #1e2638;
+  --theme-border: #1e293b;
+  --theme-text-primary: #f8fafc;
+  --theme-text-muted: #94a3b8;
+  --theme-text-light: #64748b;
+  --theme-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+}
+
+.theme-calm {
+  --theme-bg-page: #f3efe3;
+  --theme-bg-card: #fdfcf9;
+  --theme-bg-hover: #eae4d4;
+  --theme-border: #dfd7c5;
+  --theme-text-primary: #342d22;
+  --theme-text-muted: #7d7260;
+  --theme-text-light: #a49984;
+  --theme-shadow: 0 10px 40px -10px rgba(61, 52, 40, 0.05);
+}
+
+/* 1. Global Background and Text Overrides */
+.theme-dark, .theme-dark body, .theme-dark main,
+.theme-calm, .theme-calm body, .theme-calm main {
+  background-color: var(--theme-bg-page) !important;
+  color: var(--theme-text-primary);
+}
+
+/* 2. Page & Subpage Section Conteneurs Backgrounds */
+.theme-dark .bg-slate-50, .theme-dark .bg-slate-50\/50, .theme-dark .bg-slate-50\/30, .theme-dark .bg-slate-50\/80,
+.theme-calm .bg-slate-50, .theme-calm .bg-slate-50\/50, .theme-calm .bg-slate-50\/30, .theme-calm .bg-slate-50\/80 {
+  background-color: var(--theme-bg-page) !important;
+}
+
+/* 3. Card Container Background Overrides */
+.theme-dark .bg-white, .theme-dark .bg-white\/80, .theme-dark .bg-white\/90,
+.theme-calm .bg-white, .theme-calm .bg-white\/80, .theme-calm .bg-white\/90 {
+  background-color: var(--theme-bg-card) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 4. Text Classes Mapping */
+.theme-dark .text-slate-900, .theme-dark .text-slate-800, .theme-dark .text-slate-755, .theme-dark .text-slate-700, .theme-dark .text-slate-600,
+.theme-calm .text-slate-900, .theme-calm .text-slate-800, .theme-calm .text-slate-755, .theme-calm .text-slate-700, .theme-calm .text-slate-600 {
+  color: var(--theme-text-primary) !important;
+}
+
+.theme-dark .text-slate-500, .theme-dark .text-slate-400,
+.theme-calm .text-slate-500, .theme-calm .text-slate-400 {
+  color: var(--theme-text-muted) !important;
+}
+
+.theme-dark .text-slate-300,
+.theme-calm .text-slate-300 {
+  color: var(--theme-text-light) !important;
+}
+
+/* Ensure headings inside dark and calm modes are illuminated/chestnut */
+.theme-dark h1, .theme-dark h2, .theme-dark h3, .theme-dark h4, .theme-dark h5, .theme-dark h6,
+.theme-calm h1, .theme-calm h2, .theme-calm h3, .theme-calm h4, .theme-calm h5, .theme-calm h6 {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 5. Border Overrides */
+.theme-dark .border-slate-100, .theme-dark .border-slate-200, .theme-dark .border-slate-300,
+.theme-calm .border-slate-100, .theme-calm .border-slate-200, .theme-calm .border-slate-300 {
+  border-color: var(--theme-border) !important;
+}
+
+.theme-dark .border-dashed,
+.theme-calm .border-dashed {
+  border-color: var(--theme-border) !important;
+}
+
+/* 6. Hover States Mapping */
+.theme-dark .hover\:bg-slate-50:hover, .theme-dark .hover\:bg-slate-100:hover, .theme-dark .hover\:bg-slate-200:hover,
+.theme-calm .hover\:bg-slate-50:hover, .theme-calm .hover\:bg-slate-100:hover, .theme-calm .hover\:bg-slate-200:hover {
+  background-color: var(--theme-bg-hover) !important;
+}
+
+/* 7. Hover Transitions and Shadows overrides */
+.theme-dark .shadow-minimal, .theme-dark .shadow-sm, .theme-dark .shadow-md, .theme-dark .shadow-lg, .theme-dark .shadow-xl,
+.theme-calm .shadow-minimal, .theme-calm .shadow-sm, .theme-calm .shadow-md, .theme-calm .shadow-lg, .theme-calm .shadow-xl {
+  box-shadow: var(--theme-shadow) !important;
+}
+
+/* 8. Badge & Inner containers styling */
+.theme-dark .bg-slate-200, .theme-dark .bg-slate-100, .theme-dark .bg-slate-50,
+.theme-calm .bg-slate-200, .theme-calm .bg-slate-100, .theme-calm .bg-slate-50 {
+  background-color: var(--theme-bg-hover) !important;
+}
+
+/* 9. Specialized Mode Accents */
+/* Dark Mode Specfic Emeralds, Roses, Blues, Indigos */
+.theme-dark .bg-emerald-50, .theme-dark .bg-emerald-50\/50, .theme-dark .bg-green-50 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+.theme-dark .text-emerald-500, .theme-dark .text-emerald-600, .theme-dark .text-emerald-700, .theme-dark .text-green-600 {
+  color: #34d399 !important;
+}
+
+.theme-dark .bg-red-50, .theme-dark .bg-rose-50, .theme-dark .bg-red-50\/50, .theme-dark .bg-red-50\/30 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.2) !important;
+}
+.theme-dark .text-red-500, .theme-dark .text-red-600, .theme-dark .text-rose-500 {
+  color: #f87171 !important;
+}
+
+.theme-dark .bg-indigo-50, .theme-dark .bg-indigo-50\/50, .theme-dark .bg-indigo-100 {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+  color: #818cf8 !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+}
+.theme-dark .text-indigo-600, .theme-dark .text-indigo-400, .theme-dark .text-indigo-700 {
+  color: #818cf8 !important;
+}
+
+.theme-dark .bg-amber-50, .theme-dark .bg-yellow-50, .theme-dark .bg-amber-50\/50 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.2) !important;
+}
+.theme-dark .text-amber-500, .theme-dark .text-amber-600, .theme-dark .text-yellow-600 {
+  color: #fbbf24 !important;
+}
+
+.theme-dark .bg-blue-50, .theme-dark .bg-blue-600\/10 {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  color: #60a5fa !important;
+}
+.theme-dark .text-blue-600, .theme-dark .text-blue-500 {
+  color: #60a5fa !important;
+}
+
+/* Calm Mode Specific Accents (Sage Green, Ochre, Amber Coffee) */
+.theme-calm .bg-indigo-600 {
+  background-color: #b45309 !important; /* Clay Terracotta Main */
+  color: #ffffff !important;
+}
+.theme-calm .bg-indigo-50, .theme-calm .bg-indigo-50\/50, .theme-calm .bg-indigo-100 {
+  background-color: #f4edd6 !important;
+  color: #b45309 !important;
+  border-color: #e5dab9 !important;
+}
+.theme-calm .text-indigo-600, .theme-calm .text-indigo-700, .theme-calm .text-indigo-400 {
+  color: #b45309 !important;
+}
+
+.theme-calm .bg-emerald-50, .theme-calm .bg-emerald-50\/50, .theme-calm .bg-green-50 {
+  background-color: #e8eedb !important;
+  color: #15803d !important;
+  border-color: #d8e3c1 !important;
+}
+.theme-calm .text-emerald-500, .theme-calm .text-emerald-600, .theme-calm .text-green-600 {
+  color: #15803d !important;
+}
+
+.theme-calm .bg-amber-50, .theme-calm .bg-yellow-50, .theme-calm .bg-amber-50\/50 {
+  background-color: #f7ebd7 !important;
+  color: #a16207 !important;
+  border-color: #ecd5bd !important;
+}
+.theme-calm .text-amber-500, .theme-calm .text-amber-600, .theme-calm .text-yellow-600 {
+  color: #a16207 !important;
+}
+
+/* 10. Forms, Dropdowns and Inputs styling */
+.theme-dark select, .theme-dark input, .theme-dark textarea,
+.theme-calm select, .theme-calm input, .theme-calm textarea {
+  background-color: var(--theme-bg-page) !important;
+  color: var(--theme-text-primary) !important;
+  border: 1px solid var(--theme-border) !important;
+}
+.theme-dark option,
+.theme-calm option {
+  background-color: var(--theme-bg-card) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 11. Custom Component Overrides */
+/* Navbars, Sidebars and Headers */
+.theme-dark header, .theme-dark aside,
+.theme-calm header, .theme-calm aside {
+  background-color: var(--theme-bg-card) !important;
+  border-color: var(--theme-border) !important;
+}
+
+/* Modals */
+.theme-dark .fixed .bg-white,
+.theme-calm .fixed .bg-white {
+  background-color: var(--theme-bg-card) !important;
+  border-color: var(--theme-border) !important;
+}
+
+/* 12. Recharts Adjustments for Theme Integrity */
+.theme-dark .recharts-cartesian-grid line,
+.theme-calm .recharts-cartesian-grid line {
+  stroke: var(--theme-border) !important;
+  stroke-opacity: 0.6 !important;
+}
+.theme-dark .recharts-text,
+.theme-calm .recharts-text {
+  fill: var(--theme-text-muted) !important;
+}
+.theme-dark .recharts-default-tooltip,
+.theme-calm .recharts-default-tooltip {
+  background-color: var(--theme-bg-card) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text-primary) !important;
+}
+.theme-dark .recharts-tooltip-item,
+.theme-calm .recharts-tooltip-item {
+  color: var(--theme-text-primary) !important;
+}
