@@ -426,7 +426,7 @@ export function StudentProfile({ student, data, evaluations, onClose, onStartQui
                          <div className="flex gap-2">
                             {data.quizzes
                               .filter(q => !q.isArchived && (q.classIds?.includes(student.classId) || (!q.classIds?.length && q.gradeId === studentClass?.gradeId)))
-                              .slice(0, 2) 
+                              .slice(0, 0)
                               .map(quiz => (
                                <button 
                                  key={quiz.id}
@@ -440,20 +440,30 @@ export function StudentProfile({ student, data, evaluations, onClose, onStartQui
                       </div>
 
                       {quizResults.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                            {quizResults.sort((a, b) => b.updatedAt?.seconds - a.updatedAt?.seconds).map(res => {
                              const quiz = data.quizzes.find(q => q.id === res.quizId);
                              return (
-                               <div key={res.id} className="p-1.5 rounded-xl border border-slate-100 bg-white shadow-sm flex flex-col gap-1.5 hover:border-indigo-100 transition-colors">
-                                  <div className="flex items-center gap-1.5">
-                                     <div className={`w-5 h-5 rounded-lg flex items-center justify-center font-black text-[7px] shadow-sm shrink-0 ${res.score >= 80 ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}>
+                               <div key={res.id} onClick={() => quiz && onStartQuiz(quiz)} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] flex items-center justify-between hover:border-indigo-100 transition-all group cursor-pointer hover:shadow-md hover:-translate-y-0.5">
+                                  <div className="flex items-center gap-4">
+                                     <div className={`w-12 h-12 rounded-[1rem] flex items-center justify-center font-black text-sm shadow-sm shrink-0 ${res.score >= 80 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : res.score >= 50 ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
                                         {res.score}%
                                      </div>
-                                     <p className="font-black text-slate-800 text-[8px] truncate">{quiz?.title || 'اختبار'}</p>
+                                     <div className="space-y-1">
+                                        <p className="font-black text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{quiz?.title || 'اختبار'}</p>
+                                        <div className="flex items-center gap-2">
+                                          <div className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${res.score >= 80 ? 'text-emerald-700 bg-emerald-50' : res.score >= 50 ? 'text-amber-700 bg-amber-50' : 'text-rose-700 bg-rose-50'}`}>
+                                            {res.score >= 80 ? 'مستوى متقدم' : res.score >= 50 ? 'مستوى متوسط' : 'مستوى ضعيف'}
+                                          </div>
+                                        </div>
+                                     </div>
                                   </div>
-                                  <p className="text-[6px] text-slate-400 flex items-center gap-1">
-                                     <Clock size={6} /> {new Date(res.updatedAt?.seconds * 1000).toLocaleDateString('ar-SA')}
-                                  </p>
+                                  <div className="flex flex-col items-end gap-1">
+                                     <p className="text-[10px] font-black text-slate-400">تاريخ المعالجة</p>
+                                     <p className="text-xs text-slate-600 font-bold flex items-center gap-1.5">
+                                        <Clock size={12} className="text-slate-300" /> {new Date(res.updatedAt?.seconds * 1000).toLocaleDateString('ar-SA')}
+                                     </p>
+                                  </div>
                                </div>
                              );
                            })}
@@ -467,24 +477,35 @@ export function StudentProfile({ student, data, evaluations, onClose, onStartQui
                         </div>
                       )}
                       
-                      <div className="mt-8">
+                      <div className="mt-8 pt-8 border-t border-slate-100">
                          <h3 className="text-sm font-black text-slate-800 mb-4">الاختبارات القصيرة (من الزيارات الإشرافية)</h3>
-                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                            {data.visits?.filter(v => v.selectedStudentIds?.includes(student.id) && !v.isArchived && v.studentQuizScores && v.studentQuizScores[student.id] !== undefined).map(v => {
                               const score = v.studentQuizScores[student.id];
                               const maxScore = v.quizMaxScore || 10;
                               const percentage = Math.round((score / maxScore) * 100);
                               return (
-                               <div key={v.id} className="p-1.5 rounded-xl border border-slate-100 bg-white shadow-sm flex flex-col gap-1.5 hover:border-indigo-100 transition-colors">
-                                  <div className="flex items-center gap-1.5">
-                                     <div className={`w-5 h-5 rounded-lg flex items-center justify-center font-black text-[7px] shadow-sm shrink-0 ${percentage >= 80 ? 'bg-emerald-500 text-white' : percentage >= 50 ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'}`}>
-                                        {score}/{maxScore}
+                               <div key={v.id} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] flex items-center justify-between hover:border-indigo-100 transition-all group hover:shadow-md hover:-translate-y-0.5">
+                                  <div className="flex items-center gap-4">
+                                     <div className={`w-12 h-12 rounded-[1rem] flex items-center space-x-0.5 justify-center font-black text-sm shadow-sm shrink-0 flex-col ${percentage >= 80 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : percentage >= 50 ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
+                                        <div>{score}</div>
+                                        <div className="text-[8px] text-slate-400 font-bold border-t border-slate-200 w-6 text-center leading-tight">من {maxScore}</div>
                                      </div>
-                                     <p className="font-black text-slate-800 text-[8px] truncate">{v.quizText || v.lessonTitle || 'اختبار قصير'}</p>
+                                     <div className="space-y-1">
+                                        <p className="font-black text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{v.quizText || v.lessonTitle || 'اختبار قصير'}</p>
+                                        <div className="flex items-center gap-2">
+                                          <div className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${percentage >= 80 ? 'text-emerald-700 bg-emerald-50' : percentage >= 50 ? 'text-amber-700 bg-amber-50' : 'text-rose-700 bg-rose-50'}`}>
+                                            تطبيق قصير ضمن زيارة
+                                          </div>
+                                        </div>
+                                     </div>
                                   </div>
-                                  <p className="text-[6px] text-slate-400 flex items-center gap-1">
-                                     <Clock size={6} /> {new Date(v.date).toLocaleDateString('ar-SA')}
-                                  </p>
+                                  <div className="flex flex-col items-end gap-1">
+                                     <p className="text-[10px] font-black text-slate-400">تاريخ الزيارة</p>
+                                     <p className="text-xs text-slate-600 font-bold flex items-center gap-1.5">
+                                        <Clock size={12} className="text-slate-300" /> {new Date(v.date).toLocaleDateString('ar-SA')}
+                                     </p>
+                                  </div>
                                </div>
                               )
                            })}

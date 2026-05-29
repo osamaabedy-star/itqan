@@ -165,13 +165,13 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
 
   return (
     <div className="fixed inset-0 bg-slate-50 z-[70] flex flex-col animate-in fade-in fill-mode-both" dir="rtl">
-      <header className="bg-white h-20 border-b border-slate-100 flex items-center justify-between px-8 relative z-[80]">
-         <div className="flex items-center gap-6">
-            <div className="bg-indigo-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg shadow-lg shadow-indigo-100">
+      <header className="bg-white h-16 border-b border-slate-100 flex items-center justify-between px-6 relative z-[80] shadow-sm">
+         <div className="flex items-center gap-4">
+            <div className="bg-indigo-600 text-white w-10 h-10 rounded-xl flex items-center justify-center font-black text-base shadow-md shadow-indigo-100">
                {currentQuestionIndex + 1}
             </div>
             <div>
-               <h2 className="text-lg font-black text-slate-900 leading-tight">{quiz.title}</h2>
+               <h2 className="text-base font-black text-slate-900 leading-tight">{quiz.title}</h2>
                <div className="flex items-center gap-2 mt-1">
                   <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
                      {classStudents && student && classStudents.length > 1 && (
@@ -328,10 +328,6 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
             )}
          </motion.div>
       </main>
-
-      <footer className="p-4 text-center border-t border-slate-100 bg-white">
-         <p className="text-slate-400 font-bold text-[10px] tracking-widest uppercase">نظام إتقان التعليمي • منصة التقييم الذكي</p>
-      </footer>
     </div>
   );
 }

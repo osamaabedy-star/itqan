@@ -628,8 +628,12 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                   <div className="hidden pb-10 border-b border-slate-100 mb-10 flex-col gap-2 print:flex" style={{ display: isExporting ? 'flex' : 'none' }}>
                      <div className="flex justify-between items-start">
                         <div className="flex items-center gap-4">
-                           <div className="w-16 h-16 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg">
-                              <BarChart3 size={32} />
+                           <div className={`w-16 h-16 ${data.settings?.[0]?.schoolLogoUrl ? '' : 'bg-indigo-600 text-white'} rounded-2xl flex items-center justify-center shadow-lg overflow-hidden`}>
+                              {data.settings?.[0]?.schoolLogoUrl ? (
+                                <img src={data.settings?.[0]?.schoolLogoUrl} alt="School Logo" className="w-full h-full object-cover" />
+                              ) : (
+                                <BarChart3 size={32} />
+                              )}
                            </div>
                            <div>
                               <h1 className="text-4xl font-black text-slate-900 tracking-tight">تقرير منصة إتقان</h1>
@@ -927,15 +931,15 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                   </div>
 
                                   {/* Text Search Input */}
-                                  <div className="relative group w-full sm:w-64">
+                                  <div className="relative group w-full sm:w-48">
                                      <input 
                                        type="text"
-                                       placeholder="ابحث باسم الاختبار..."
+                                       placeholder="بحث..."
                                        value={searchTerm}
                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                       className="w-full h-12 bg-slate-50 border border-slate-200/80 rounded-2xl pr-11 pl-4 font-bold text-slate-800 outline-none focus:ring-2 ring-indigo-50 focus:border-indigo-400 transition-all text-xs"
+                                       className="w-full h-8 bg-slate-50 border border-slate-200/80 rounded-lg pr-9 pl-3 font-semibold text-slate-700 outline-none focus:ring-2 ring-indigo-50 focus:border-indigo-400 transition-all text-[11px]"
                                      />
-                                     <Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
+                                     <Search size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
                                   </div>
                                </div>
                             </div>
@@ -1394,19 +1398,19 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                </div>
 
                                {/* Search Input */}
-                               <div className="relative w-full sm:w-64 font-sans">
+                               <div className="relative w-full sm:w-48 font-sans">
                                   <input 
                                      type="text"
-                                     placeholder="ابحث عن اسم الطالب..."
+                                     placeholder="بحث..."
                                      value={studentSearchTerm}
                                      onChange={e => setStudentSearchTerm(e.target.value)}
-                                     className="w-full bg-slate-50 text-slate-700 h-11 px-4 pr-11 text-xs font-black rounded-xl border border-slate-100 focus:border-indigo-500 focus:bg-white transition-all outline-none text-right"
+                                     className="w-full bg-slate-50 text-slate-700 h-8 px-3 pr-9 text-[11px] font-bold rounded-lg border border-slate-100 focus:border-indigo-500 focus:bg-white transition-all outline-none text-right"
                                   />
-                                  <Search size={16} className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-400" />
+                                  <Search size={12} className="absolute top-1/2 right-3 -translate-y-1/2 text-slate-400" />
                                   {studentSearchTerm && (
                                      <button 
                                         onClick={() => setStudentSearchTerm('')}
-                                        className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-extrabold text-[10px]"
+                                        className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-extrabold text-[9px]"
                                      >
                                         مسح
                                      </button>

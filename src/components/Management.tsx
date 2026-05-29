@@ -28,6 +28,7 @@ import {
   Calendar,
   Sparkles,
   FileSpreadsheet,
+  Download,
   Upload,
   Info,
 } from "lucide-react";
@@ -48,6 +49,54 @@ import { firestoreService } from "../services/firestoreService";
 import { APP_STAGES } from "../constants";
 import { ImageUploader } from "./ui/ImageUploader";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
+
+function parseBulkLine(line: string) {
+  const text = line.trim();
+  if (!text) return null;
+  // Look for any word/token that consists entirely of numbers (6 to 14 digits)
+  const numberMatch = text.match(/\b\d{6,14}\b/);
+  let nationalId = "";
+  let name = text;
+  if (numberMatch) {
+    nationalId = numberMatch[0];
+    // Remove the national ID from the name text and clean other delimiters
+    name = text
+      .replace(nationalId, "")
+      .replace(/[,;\t]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  } else {
+    // Check if there is a comma or tab splitting
+    const parts = text.split(/[,;\t]/).map((p) => p.trim());
+    if (parts.length >= 2) {
+      const possibleId = parts.find((p) => /^\d+$/.test(p));
+      if (possibleId) {
+        nationalId = possibleId;
+        name = parts.filter((p) => p !== possibleId).join(" ");
+      } else {
+        name = parts[0];
+      }
+    }
+  }
+  return { name, nationalId };
+}
+
+const downloadCSVTemplate = (type: "teachers" | "students") => {
+  const headers = type === "teachers" ? "الاسم,رقم_الهوية\n" : "الاسم,رقم_الهوية,الصف,الفصل\n";
+  const rows = type === "teachers"
+    ? "خالد بن محمد العتيبي,1029384756\nعبدالرحمن بن عبدالله الحربي,1039485761"
+    : "عبدالرحمن بن محمد القحطاني,1049586722,الصف الثالث,ج\nسلطان بن خالد السبيعي,1059687733,الصف الرابع,أ";
+  
+  const csvContent = "\uFEFF" + "sep=,\n" + headers + rows; // Arabic UTF-8 BOM + Excel separator directive
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${type === "teachers" ? "نموذج_استيراد_المعلمين" : "نموذج_استيراد_الطلاب"}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
 
 interface ManagementProps {
   data: AppData;
@@ -350,19 +399,40 @@ export function Management({
         const id = Date.now() + Math.random().toString(36).substr(2, 9);
 
         if (bulkType === "teachers") {
-          await firestoreService.saveItem("teachers", "t_" + id, {
-            name: line.trim(),
-          });
+          const parsed = parseBulkLine(line);
+          if (parsed) {
+            const teacherId = "t_" + id;
+            await firestoreService.saveItem("teachers", teacherId, {
+              name: parsed.name,
+              isArchived: false,
+            });
+            if (parsed.nationalId) {
+              await firestoreService.saveItem("externalProfiles", parsed.nationalId, {
+                id: parsed.nationalId,
+                name: parsed.name,
+                role: "teacher",
+                linkedTeacherId: teacherId,
+                isArchived: false,
+                createdAt: new Date(),
+              });
+            }
+          }
         } else if (bulkType === "classes") {
           await firestoreService.saveItem("classes", "c_" + id, {
             name: line.trim(),
             teacherIds: [],
           });
         } else if (bulkType === "students" && bulkClassId) {
-          await firestoreService.saveItem("students", "st_" + id, {
-            name: line.trim(),
-            classId: bulkClassId,
-          });
+          const parsed = parseBulkLine(line);
+          if (parsed) {
+            await firestoreService.saveItem("students", "st_" + id, {
+              name: parsed.name,
+              classId: bulkClassId,
+              isArchived: false,
+              academicYear: academicYear || "2025-2026",
+              nationalId: parsed.nationalId,
+            });
+          }
         } else if (bulkType === "skills" && (bulkSubjectId || targetGradeId)) {
           const [name, ...questions] = line.split("|").map((s) => s.trim());
           if (name) {
@@ -392,10 +462,12 @@ export function Management({
   const [gradeName, setGradeName] = useState("");
   const [gradeStage, setGradeStage] = useState("primary");
   const [teacherName, setTeacherName] = useState("");
+  const [teacherNationalId, setTeacherNationalId] = useState("");
   const [className, setClassName] = useState("");
   const [targetGradeId, setTargetGradeId] = useState("");
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [studentName, setStudentName] = useState("");
+  const [studentNationalId, setStudentNationalId] = useState("");
   const [targetClassId, setTargetClassId] = useState("");
   const [studentPhotoUrl, setStudentPhotoUrl] = useState("");
   const [subjectName, setSubjectName] = useState("");
@@ -404,6 +476,10 @@ export function Management({
   const [targetSubjectName, setTargetSubjectName] = useState("");
   const [skillQuestions, setSkillQuestions] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [parsedTeachers, setParsedTeachers] = useState<{ name: string; nationalId: string }[]>([]);
+  const [parsedStudents, setParsedStudents] = useState<{ name: string; nationalId: string; className?: string; gradeName?: string }[]>([]);
+  const [teacherImportMode, setTeacherImportMode] = useState<"single" | "file">("single");
+  const [studentImportMode, setStudentImportMode] = useState<"single" | "file">("single");
 
   // External Profiles Form States
   const [extProfileId, setExtProfileId] = useState("");
@@ -958,9 +1034,11 @@ export function Management({
     setGradeName("");
     setGradeStage("primary");
     setTeacherName("");
+    setTeacherNationalId("");
     setClassName("");
     setTargetGradeId("");
     setStudentName("");
+    setStudentNationalId("");
     setTargetClassId("");
     setStudentPhotoUrl("");
     setSubjectName("");
@@ -989,6 +1067,52 @@ export function Management({
     setExtProfileRole("teacher");
     setExtProfileTeacherId("");
     setEditingId(null);
+    setParsedTeachers([]);
+    setParsedStudents([]);
+  };
+
+  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>, type: "teachers" | "students") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+      const parsed: any[] = [];
+
+      // Check if first line contains header keywords
+      const firstLine = lines[0] || "";
+      const startIdx = (firstLine.includes("الاسم") || firstLine.includes("Name") || firstLine.includes("الهوية") || firstLine.includes("id")) ? 1 : 0;
+
+      for (let i = startIdx; i < lines.length; i++) {
+        const line = lines[i];
+        const cols = line.split(/[,;\t]/).map(c => c.trim().replace(/^["']|["']$/g, ""));
+        if (cols.length > 0 && cols[0]) {
+          const name = cols[0];
+          const nationalId = cols[1] || "";
+          if (type === "students") {
+            const gradeName = cols[2] || "";
+            const className = cols[3] || "";
+            parsed.push({ name, nationalId, gradeName, className });
+          } else {
+            parsed.push({ name, nationalId });
+          }
+        }
+      }
+
+      if (parsed.length > 0) {
+        if (type === "teachers") {
+          setParsedTeachers(parsed);
+        } else {
+          setParsedStudents(parsed);
+        }
+      } else {
+        alert("لم نتمكن من العثور على أي أسماء في الملف. تأكد من صحة الصيغة.");
+      }
+    };
+    reader.readAsText(file, "UTF-8");
   };
 
   const handleAddQuestion = () => {
@@ -1128,15 +1252,66 @@ export function Management({
   };
 
   const handleAddTeacher = async () => {
-    if (!teacherName) return;
-    const names = teacherName.split("\n").filter((n) => n.trim() !== "");
-    for (const name of names) {
-      const id =
-        editingId ||
-        "t_" + Date.now() + Math.random().toString(36).substr(2, 5);
-      await firestoreService.saveItem("teachers", id, { name: name.trim() });
+    const itemsToSave = parsedTeachers.length > 0 
+      ? parsedTeachers 
+      : [{ name: teacherName.trim(), nationalId: teacherNationalId.trim() }];
+
+    if (itemsToSave.length === 1 && !itemsToSave[0].name) return;
+    setIsProcessing(true);
+    try {
+      for (const item of itemsToSave) {
+        if (!item.name) continue;
+        const id = editingId || "t_" + Date.now() + Math.random().toString(36).substr(2, 5);
+        
+        let rawNatId = item.nationalId.trim();
+        let formattedNatId = "";
+        if (rawNatId) {
+          formattedNatId = rawNatId.toLowerCase().startsWith("t") 
+            ? rawNatId.toLowerCase() 
+            : "t" + rawNatId;
+        }
+
+        // 1. Save Teacher document
+        await firestoreService.saveItem("teachers", id, {
+          name: item.name,
+          nationalId: formattedNatId,
+          isArchived: false,
+        });
+
+        // 2. Format teacher login profile ID with "t" prefix if not yet there
+
+        const existingProfile = data.externalProfiles?.find(
+          (p) => p.linkedTeacherId === id
+        );
+
+        if (formattedNatId) {
+          // If the login ID changed, delete the old profile document
+          if (existingProfile && existingProfile.id !== formattedNatId) {
+            await firestoreService.deleteItem("externalProfiles", existingProfile.id);
+          }
+          // Save/overwrite the external login profile
+          await firestoreService.saveItem("externalProfiles", formattedNatId, {
+            id: formattedNatId,
+            name: item.name,
+            role: "teacher",
+            linkedTeacherId: id,
+            isArchived: false,
+            createdAt: new Date(),
+          });
+        } else if (existingProfile) {
+          // If National ID was cleared out during edit, delete the login profile
+          await firestoreService.deleteItem("externalProfiles", existingProfile.id);
+        }
+
+        if (editingId) break;
+      }
+      resetForms();
+    } catch (err: any) {
+      console.error(err);
+      alert("حدث خطأ أثناء حفظ المعلم: " + err.message);
+    } finally {
+      setIsProcessing(false);
     }
-    resetForms();
   };
 
   const handleAddClass = async () => {
@@ -1156,21 +1331,88 @@ export function Management({
   };
 
   const handleAddStudent = async () => {
-    if (!studentName || !targetClassId) return;
-    const names = studentName.split("\n").filter((n) => n.trim() !== "");
-    for (const name of names) {
-      const id = Date.now() + Math.random().toString(36).substr(2, 5);
-      const studentId = editingId || "st_" + id;
-      await firestoreService.saveItem("students", studentId, {
-        name: name.trim(),
-        classId: targetClassId,
-        isArchived: false,
-        academicYear: academicYear || "2025-2026",
-        photoUrl: studentPhotoUrl.trim() || "",
-      });
-      if (editingId) break; // Only one edit if editing
+    const itemsToSave = parsedStudents.length > 0
+      ? parsedStudents
+      : [{ name: studentName.trim(), nationalId: studentNationalId.trim(), gradeName: "", className: "" }];
+
+    // If importing single row without a class selected, and no class name in it, abort.
+    if (itemsToSave.length === 1 && !targetClassId && (!itemsToSave[0].className || !itemsToSave[0].gradeName)) return;
+
+    setIsProcessing(true);
+    try {
+      const localGradesCache = new Map<string, string>();
+      const localClassesCache = new Map<string, string>();
+
+      for (const item of itemsToSave) {
+        if (!item.name) continue;
+        const id = Date.now() + Math.random().toString(36).substr(2, 5);
+        const studentId = editingId || "st_" + id;
+
+        let rawNatId = item.nationalId.trim();
+        let formattedNatId = "";
+        if (rawNatId) {
+          formattedNatId = rawNatId.toLowerCase().startsWith("s")
+            ? rawNatId.toLowerCase()
+            : "s" + rawNatId;
+        }
+
+        let finalClassId = targetClassId;
+
+        // Auto-detect or create grade and class if provided in CSV
+        if (item.gradeName && item.className) {
+           let gradeNameClean = item.gradeName.trim();
+           let classNameClean = item.className.trim();
+           
+           let gId = localGradesCache.get(gradeNameClean);
+           if (!gId) {
+             const existingGrade = data.grades.find(g => g.name.trim() === gradeNameClean);
+             if (existingGrade) {
+               gId = existingGrade.id;
+             } else {
+               gId = "gr_" + Date.now() + Math.random().toString(36).substr(2, 5);
+               await firestoreService.saveItem("grades", gId, { name: gradeNameClean, stage: "primary" });
+             }
+             localGradesCache.set(gradeNameClean, gId);
+           }
+
+           const cacheClassKey = gId + "_" + classNameClean;
+           let cId = localClassesCache.get(cacheClassKey);
+           if (!cId) {
+             const existingClass = data.classes.find(c => c.name.trim() === classNameClean && c.gradeId === gId);
+             if (existingClass) {
+               cId = existingClass.id;
+             } else {
+               cId = "cl_" + Date.now() + Math.random().toString(36).substr(2, 5);
+               await firestoreService.saveItem("classes", cId, { name: classNameClean, gradeId: gId, isArchived: false });
+             }
+             localClassesCache.set(cacheClassKey, cId);
+           }
+
+           finalClassId = cId;
+        }
+
+        if (!finalClassId) {
+          continue;
+        }
+
+        await firestoreService.saveItem("students", studentId, {
+          name: item.name,
+          classId: finalClassId,
+          isArchived: false,
+          academicYear: academicYear || "2025-2026",
+          photoUrl: studentPhotoUrl.trim() || "",
+          nationalId: formattedNatId,
+        });
+
+        if (editingId) break;
+      }
+      resetForms();
+    } catch (err: any) {
+      console.error(err);
+      alert("حدث خطأ أثناء حفظ الطالب: " + err.message);
+    } finally {
+      setIsProcessing(false);
     }
-    resetForms();
   };
 
   // Helper to get unique subject names
@@ -1324,12 +1566,16 @@ export function Management({
     if (type === "grades") {
       setGradeName(item.name);
       setGradeStage(item.stage || "primary");
-    } else if (type === "teachers") setTeacherName(item.name);
-    else if (type === "classes") {
+    } else if (type === "teachers") {
+      setTeacherName(item.name);
+      const profile = data.externalProfiles?.find(p => p.linkedTeacherId === item.id);
+      setTeacherNationalId(profile ? profile.id : "");
+    } else if (type === "classes") {
       setClassName(item.name);
       setTargetGradeId(item.gradeId || "");
     } else if (type === "students") {
       setStudentName(item.name);
+      setStudentNationalId(item.nationalId || "");
       setTargetClassId(item.classId);
       setStudentPhotoUrl(item.photoUrl || "");
     } else if (type === "subjects") {
@@ -1650,7 +1896,7 @@ export function Management({
                   resetForms();
                 }}
                 icon={<ShieldCheck size={18} />}
-                label="الحسابات الخارجية"
+                label="صلاحيات الدخول"
               />
             </div>
 
@@ -1668,13 +1914,13 @@ export function Management({
                 label="الأرشفة والترفيع"
               />
               <TabButton
-                active={activeTab === "bulk"}
+                active={activeTab === "system_settings"}
                 onClick={() => {
-                  setActiveTab("bulk");
+                  setActiveTab("system_settings");
                   resetForms();
                 }}
-                icon={<Save size={18} />}
-                label="الاستيراد السريع"
+                icon={<Settings size={18} />}
+                label="شعار النظام"
               />
             </div>
           </nav>
@@ -1763,17 +2009,17 @@ export function Management({
               )}
             </div>
 
-            <div className="relative w-full max-w-sm">
+            <div className="relative w-full max-w-[180px]">
               <Search
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300"
-                size={16}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                size={12}
               />
               <input
                 type="text"
-                placeholder="البحث السريع..."
+                placeholder="بحث..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 bg-white border border-slate-200 rounded-xl pr-10 pl-4 font-bold text-[10px] outline-none focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
+                className="w-full h-8 bg-white border border-slate-200 rounded-lg pr-8 pl-3 font-bold text-[11px] outline-none focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
               />
             </div>
           </div>
@@ -1876,35 +2122,144 @@ export function Management({
           )}
 
           {activeTab === "teachers" && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fadeIn">
               <TabTitle
                 title="إدارة المعلمين"
-                description="إضافة المعلمين وإدارة تخصصاتهم"
+                description="إضافة المعلمين للمدرسة وإدارة حسابات دخولهم."
               />
 
-              <TabCard title="إضافة معلمين">
-                <div className="flex flex-col gap-4">
-                  <textarea
-                    value={teacherName}
-                    onChange={(e) => setTeacherName(e.target.value)}
-                    placeholder="أسماء المعلمين (اسم في كل سطر)..."
-                    className="w-full h-32 bg-slate-50 border border-slate-200 rounded-xl p-4 font-bold outline-none resize-none"
-                  />
-                  <button
-                    onClick={handleAddTeacher}
-                    className="bg-indigo-600 text-white h-14 rounded-xl font-black hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {editingId ? <Save size={18} /> : <Plus size={18} />}
-                    {editingId ? "حفظ التعديلات" : "إضافة المعلمين"}
-                  </button>
-                  {editingId && (
-                    <button
-                      onClick={resetForms}
-                      className="bg-slate-200 text-slate-500 py-3 rounded-xl flex items-center justify-center"
-                    >
-                      <X size={18} />
-                    </button>
+              <TabCard title={editingId ? "تعديل بيانات معلم" : "إضافة معلمين"}>
+                <div className="flex flex-col gap-5">
+                  {!editingId && (
+                    <div className="flex bg-slate-100 p-1 rounded-2xl w-full max-w-xs">
+                      <button
+                        type="button"
+                        onClick={() => { setTeacherImportMode("single"); setParsedTeachers([]); }}
+                        className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                          teacherImportMode === "single"
+                            ? "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        إضافة فردية
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTeacherImportMode("file")}
+                        className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                          teacherImportMode === "file"
+                            ? "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        استيراد ملف Excel/CSV
+                      </button>
+                    </div>
                   )}
+
+                  {editingId || teacherImportMode === "single" ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-slate-400 mr-1">الاسم</label>
+                        <input
+                          type="text"
+                          value={teacherName}
+                          onChange={(e) => setTeacherName(e.target.value)}
+                          placeholder="الاسم الكريم..."
+                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold outline-none focus:ring-2 focus:ring-indigo-100"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-slate-400 mr-1">رقم الهوية الوطنية</label>
+                        <input
+                          type="text"
+                          value={teacherNationalId}
+                          onChange={(e) => setTeacherNationalId(e.target.value)}
+                          placeholder="مثال: 1029384756"
+                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold outline-none text-right focus:ring-2 focus:ring-indigo-100"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row gap-3 items-stretch justify-end">
+                        <button
+                          type="button"
+                          onClick={() => downloadCSVTemplate("teachers")}
+                          className="text-xs bg-indigo-50 border border-indigo-100 hover:bg-slate-900 hover:text-white hover:border-slate-900 text-indigo-700 px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shrink-0 w-full sm:w-auto"
+                        >
+                          <Download size={14} />
+                          تحميل ملف القالب
+                        </button>
+                      </div>
+
+                      <div className="relative flex flex-col justify-center items-center p-8 border-2 border-dashed border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50/10 bg-slate-50/50 transition-colors text-center group">
+                        <Upload className="text-slate-400 group-hover:text-indigo-500 mb-2 transition-all" size={28} />
+                        <span className="text-xs font-black text-slate-600">اختر أو اسحب ملف CSV/TXT للأسماء هنا</span>
+                        <input
+                          type="file"
+                          accept=".csv,.txt"
+                          onChange={(e) => handleCSVUpload(e, "teachers")}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                      </div>
+
+                      {parsedTeachers.length > 0 && (
+                        <div className="bg-emerald-50/80 border border-emerald-100 p-5 rounded-2xl flex flex-col gap-3">
+                          <p className="text-emerald-800 text-xs font-black flex items-center gap-1">
+                            <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
+                            تم التعرف على ({parsedTeachers.length}) معلمين من الملف:
+                          </p>
+                          <div className="max-h-40 overflow-y-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
+                            <table className="w-full text-xs text-right">
+                              <thead className="bg-slate-50 border-b border-emerald-100/60 text-slate-500 sticky top-0">
+                                <tr>
+                                  <th className="px-3 py-2 font-black">#</th>
+                                  <th className="px-3 py-2 font-black">الاسم</th>
+                                  <th className="px-3 py-2 font-black">رقم الهوية</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-emerald-100/30 font-bold text-slate-800">
+                                {parsedTeachers.map((p, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-50/50">
+                                    <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                                    <td className="px-3 py-2">{p.name}</td>
+                                    <td className="px-3 py-2 font-mono text-indigo-600">{p.nationalId || "-"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setParsedTeachers([])}
+                            className="text-rose-500 text-[10px] font-black underline self-start hover:text-rose-700 transition"
+                          >
+                            إلغاء واستيراد ملف آخر
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={handleAddTeacher}
+                      disabled={isProcessing || (!editingId && teacherImportMode === "single" && !teacherName.trim()) || (!editingId && teacherImportMode === "file" && parsedTeachers.length === 0)}
+                      className="flex-1 bg-indigo-600 text-white h-14 rounded-xl font-black hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 disabled:opacity-50"
+                    >
+                      {editingId ? <Save size={18} /> : <Plus size={18} />}
+                      {editingId ? "حفظ التعديلات" : parsedTeachers.length > 0 ? `تأكيد وإضافة (${parsedTeachers.length}) معلمين` : "إضافة المعلم"}
+                    </button>
+                    {editingId && (
+                      <button
+                        onClick={resetForms}
+                        className="bg-slate-200 text-slate-500 w-14 rounded-xl flex items-center justify-center hover:bg-slate-300 transition-colors"
+                      >
+                        <X size={18} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </TabCard>
 
@@ -1920,9 +2275,14 @@ export function Management({
                     >
                       <div>
                         <p className="font-black text-slate-800">{t.name}</p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-2">
-                          كود: {t.id}
-                        </p>
+                        {t.nationalId && (
+                          <div className="flex items-center gap-2 mt-1 mb-2 flex-wrap">
+                            <span className="text-slate-300 font-black">•</span>
+                            <p className="text-[11px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded-md">
+                               هوية: {t.nationalId}
+                            </p>
+                          </div>
+                        )}
                         <div className="flex flex-wrap gap-1">
                           {data.subjects
                             .filter(
@@ -2053,7 +2413,7 @@ export function Management({
                     .map((c) => (
                       <div
                         key={c.id}
-                        className="p-5 border border-slate-100 rounded-2xl flex justify-between items-center shadow-sm"
+                        className="p-5 border border-slate-100 rounded-2xl flex justify-between items-center shadow-sm text-right"
                       >
                         <div>
                           <p className="font-black text-slate-800">{c.name}</p>
@@ -2100,56 +2460,189 @@ export function Management({
           {activeTab === "students" && (
             <SectionContainer
               title="إدارة الطلاب"
-              description="إضافة الطلاب يدوياً أو عن طريق القائمة (أسماء متبوعة بسطر جديد)"
+              description="تسجيل الطلاب وتعيين فصولهم وهوياتهم الوطنية بدقة."
             >
-              <div className="space-y-6">
-                <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 flex flex-col md:flex-row gap-4">
-                  <textarea
-                    value={studentName}
-                    onChange={(e) => setStudentName(e.target.value)}
-                    placeholder="أدخل أسماء الطلاب (اسم في كل سطر للإضافة السريعة)..."
-                    className="flex-[2] h-32 bg-white border border-slate-200 rounded-xl p-4 font-bold outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
-                  />
-                  <div className="flex flex-col gap-4 flex-1">
-                    <ImageUploader
-                      label="صورة الطالب"
-                      value={studentPhotoUrl}
-                      onChange={setStudentPhotoUrl}
-                      placeholder="رابط صورة الطالب..."
-                    />
-                    <select
-                      value={targetClassId}
-                      onChange={(e) => setTargetClassId(e.target.value)}
-                      className="w-full h-14 bg-white border border-slate-200 rounded-xl px-4 font-bold outline-none"
-                    >
-                      <option value="">اختر الفصل...</option>
-                      {data.classes
-                        .filter((c) => !c.isArchived)
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      onClick={handleAddStudent}
-                      disabled={isProcessing}
-                      className="bg-indigo-600 text-white w-full h-14 rounded-xl font-black hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 disabled:opacity-50"
-                    >
-                      {isProcessing
-                        ? "جاري الحفظ..."
-                        : editingId
-                          ? "حفظ التعديلات"
-                          : "إضافة الطلاب للفصل"}
-                    </button>
-                    {editingId && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="bg-slate-50 border border-slate-200/60 p-6 rounded-3xl flex flex-col gap-6">
+                  
+                  {!editingId && (
+                    <div className="flex bg-slate-200/50 p-1 rounded-2xl w-full max-w-xs">
                       <button
-                        onClick={resetForms}
-                        className="bg-slate-200 text-slate-500 py-3 rounded-xl flex items-center justify-center"
+                        type="button"
+                        onClick={() => { setStudentImportMode("single"); setParsedStudents([]); }}
+                        className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                          studentImportMode === "single"
+                            ? "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
                       >
-                        <X size={18} />
+                        إضافة فردية
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => setStudentImportMode("file")}
+                        className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                          studentImportMode === "file"
+                            ? "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        استيراد ملف Excel/CSV
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col md:flex-row-reverse gap-6">
+                    {/* Left form elements (now on the left visually) */}
+                    <div className="space-y-4 flex-1">
+                      {editingId || studentImportMode === "single" ? (
+                        <>
+                          <div className="space-y-1">
+                            <label className="text-xs font-black text-slate-400 mr-1">الاسم</label>
+                            <input
+                              type="text"
+                              value={studentName}
+                              onChange={(e) => setStudentName(e.target.value)}
+                              placeholder="اسم الطالب..."
+                              className="w-full h-12 bg-white border border-slate-200 rounded-xl px-4 font-bold outline-none focus:ring-2 focus:ring-indigo-100 shadow-sm"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-xs font-black text-slate-400 mr-1">رقم الهوية الوطنية</label>
+                            <input 
+                              type="text"
+                              value={studentNationalId}
+                              onChange={(e) => setStudentNationalId(e.target.value)}
+                              placeholder="رقم الهوية الوطنية..."
+                              className="w-full h-12 bg-white border border-slate-200 rounded-xl px-4 font-bold outline-none focus:ring-2 focus:ring-indigo-100 shadow-sm"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex flex-col sm:flex-row gap-3 items-stretch justify-end">
+                            <button
+                              type="button"
+                              onClick={() => downloadCSVTemplate("students")}
+                              className="text-xs bg-indigo-50 border border-indigo-100 hover:bg-slate-950 hover:text-white hover:border-slate-950 text-indigo-700 px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
+                            >
+                              <Download size={14} />
+                              تحميل ملف القالب
+                            </button>
+                          </div>
+
+                          <div className="relative flex flex-col justify-center items-center p-8 border-2 border-dashed border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50/10 bg-white transition-colors text-center group">
+                            <Upload className="text-slate-400 group-hover:text-indigo-500 mb-2 transition-all" size={28} />
+                            <span className="text-xs font-black text-slate-600">اختر أو اسحب ملف CSV/TXT للطلاب هنا</span>
+                            <input
+                              type="file"
+                              accept=".csv,.txt"
+                              onChange={(e) => handleCSVUpload(e, "students")}
+                              className="absolute inset-0 opacity-0 cursor-pointer"
+                            />
+                          </div>
+
+                          {parsedStudents.length > 0 && (
+                            <div className="bg-emerald-50/80 border border-emerald-100 p-4 rounded-2xl flex flex-col gap-2">
+                              <p className="text-emerald-800 text-xs font-black flex items-center gap-1">
+                                <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
+                                تم التعرف على ({parsedStudents.length}) طلاب من الملف:
+                              </p>
+                              <div className="max-h-40 overflow-y-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
+                                <table className="w-full text-xs text-right">
+                                  <thead className="bg-slate-50 border-b border-emerald-100/60 text-slate-500 sticky top-0">
+                                    <tr>
+                                      <th className="px-3 py-2 font-black">#</th>
+                                      <th className="px-3 py-2 font-black">الاسم</th>
+                                      <th className="px-3 py-2 font-black">رقم الهوية</th>
+                                      <th className="px-3 py-2 font-black">الصف</th>
+                                      <th className="px-3 py-2 font-black">الفصل</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-emerald-100/30 font-bold text-slate-800">
+                                    {parsedStudents.map((p, idx) => (
+                                      <tr key={idx} className="hover:bg-slate-50/50">
+                                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                                        <td className="px-3 py-2">{p.name}</td>
+                                        <td className="px-3 py-2 font-mono text-indigo-600">{p.nationalId || "-"}</td>
+                                        <td className="px-3 py-2 text-slate-500">{p.gradeName || <span className="text-rose-400 italic">غير محدد</span>}</td>
+                                        <td className="px-3 py-2 text-slate-500">{p.className || <span className="text-rose-400 italic">غير محدد</span>}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setParsedStudents([])}
+                                className="text-rose-500 text-[10px] font-black underline self-start hover:text-rose-700 transition"
+                              >
+                                إلغاء واستيراد ملف آخر
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right form elements */}
+                    <div className="space-y-4 flex flex-col justify-end flex-1">
+                      <div className="space-y-1">
+                        <label className="text-xs font-black text-slate-400 mr-1">الفصل المستهدف</label>
+                        <select
+                          value={targetClassId}
+                          onChange={(e) => setTargetClassId(e.target.value)}
+                          className="w-full h-12 bg-white border border-slate-200 rounded-xl px-4 font-bold outline-none shadow-sm focus:ring-2 focus:ring-indigo-100"
+                        >
+                          <option value="">اختر الفصل...</option>
+                          {data.classes
+                            .filter((c) => !c.isArchived)
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <ImageUploader
+                        label="صورة الطالب"
+                        value={studentPhotoUrl}
+                        onChange={setStudentPhotoUrl}
+                        placeholder="رابط صورة الطالب..."
+                      />
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleAddStudent}
+                          disabled={isProcessing || !targetClassId || (!editingId && studentImportMode === "single" && !studentName.trim()) || (!editingId && studentImportMode === "file" && parsedStudents.length === 0)}
+                          className="flex-1 bg-indigo-600 text-white h-14 rounded-xl font-black hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          {isProcessing ? (
+                            "جاري الحفظ..."
+                          ) : editingId ? (
+                            <>
+                              <Save size={18} />
+                              حفظ التعديلات
+                            </>
+                          ) : (
+                            <>
+                              <Plus size={18} />
+                              {parsedStudents.length > 0 ? `تأكيد وإضافة (${parsedStudents.length}) طلاب` : "إضافة الطالب"}
+                            </>
+                          )}
+                        </button>
+                        {editingId && (
+                          <button
+                            onClick={resetForms}
+                            className="bg-slate-200 text-slate-500 w-14 rounded-xl flex items-center justify-center hover:bg-slate-300 transition-colors"
+                          >
+                            <X size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2217,10 +2710,20 @@ export function Management({
                                 />
                               )}
                             </div>
-                            <p className="text-xs text-indigo-600 font-bold">
-                              {data.classes.find((c) => c.id === s.classId)
-                                ?.name || "بدون فصل"}
-                            </p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <p className="text-xs text-indigo-600 font-bold">
+                                {data.classes.find((c) => c.id === s.classId)
+                                  ?.name || "بدون فصل"}
+                              </p>
+                              {s.nationalId && (
+                                <>
+                                  <span className="text-slate-300 font-black">•</span>
+                                  <p className="text-[11px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                     هوية: {s.nationalId}
+                                  </p>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -3381,6 +3884,41 @@ export function Management({
             </SectionContainer>
           )}
 
+          {activeTab === "system_settings" && (
+            <SectionContainer
+              title="شعار وإعدادات النظام"
+              description="إعدادات الهوية البصرية وشعار المدرسة"
+            >
+              <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-minimal space-y-6 max-w-2xl">
+                <div className="w-16 h-16 rounded-3xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
+                  <Settings size={32} />
+                </div>
+                <h3 className="text-2xl font-black text-slate-800">
+                  تحديث شعار المدرسة
+                </h3>
+                <p className="text-slate-500 font-medium text-sm leading-relaxed">
+                  هذا الشعار سيظهر في صفحة الدخول وفي التقارير المطبوعة.
+                </p>
+
+                <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
+                  <ImageUploader 
+                     label="رابط صورة شعار المدرسة"
+                     value={data.settings?.[0]?.schoolLogoUrl || ""}
+                     onChange={async (url) => {
+                        const settingId = data.settings?.[0]?.id || "default";
+                        await firestoreService.saveItem("settings", settingId, {
+                           ...data.settings?.[0],
+                           schoolLogoUrl: url
+                        });
+                        alert("تم تحديث الشعار بنجاح!");
+                     }}
+                     placeholder="ارفع أو ضع رابط الشعار"
+                  />
+                </div>
+              </div>
+            </SectionContainer>
+          )}
+
           {activeTab === "archive" && (
             <SectionContainer
               title="إدارة الدورات الدراسية"
@@ -3708,163 +4246,6 @@ export function Management({
                           </div>
                         </div>
                       ))}
-                  </div>
-                </div>
-              </div>
-            </SectionContainer>
-          )}
-
-          {activeTab === "bulk" && (
-            <SectionContainer
-              title="مركز الاستيراد السريع"
-              description="ارفع قوائم المعلمين، الفصول، أو الطلاب دفعة واحدة بدلاً من الإدخال اليدوي"
-            >
-              <div className="space-y-8">
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setBulkType("teachers")}
-                    className={`flex-1 p-6 rounded-3xl border-2 transition-all text-center ${bulkType === "teachers" ? "bg-indigo-600 border-indigo-600 text-white shadow-xl" : "bg-white border-slate-100 text-slate-500 hover:border-indigo-100"}`}
-                  >
-                    <p className="font-black">استيراد معلمين</p>
-                  </button>
-                  <button
-                    onClick={() => setBulkType("classes")}
-                    className={`flex-1 p-6 rounded-3xl border-2 transition-all text-center ${bulkType === "classes" ? "bg-indigo-600 border-indigo-600 text-white shadow-xl" : "bg-white border-slate-100 text-slate-500 hover:border-indigo-100"}`}
-                  >
-                    <p className="font-black">استيراد فصول</p>
-                  </button>
-                  <button
-                    onClick={() => setBulkType("students")}
-                    className={`flex-1 p-6 rounded-3xl border-2 transition-all text-center ${bulkType === "students" ? "bg-indigo-600 border-indigo-600 text-white shadow-xl" : "bg-white border-slate-100 text-slate-500 hover:border-indigo-100"}`}
-                  >
-                    <p className="font-black">استيراد طلاب</p>
-                  </button>
-                  <button
-                    onClick={() => setBulkType("skills")}
-                    className={`flex-1 p-6 rounded-3xl border-2 transition-all text-center ${bulkType === "skills" ? "bg-indigo-600 border-indigo-600 text-white shadow-xl" : "bg-white border-slate-100 text-slate-500 hover:border-indigo-100"}`}
-                  >
-                    <p className="font-black">استيراد مهارات</p>
-                  </button>
-                  <button
-                    onClick={() => setBulkType("quizzes")}
-                    className={`flex-1 p-6 rounded-3xl border-2 transition-all text-center ${bulkType === "quizzes" ? "bg-indigo-600 border-indigo-600 text-white shadow-xl" : "bg-white border-slate-100 text-slate-500 hover:border-indigo-100"}`}
-                  >
-                    <p className="font-black">استيراد اختبارات</p>
-                  </button>
-                </div>
-
-                <div className="bg-slate-50 p-6 md:p-8 rounded-[40px] border border-slate-100 flex flex-col gap-6">
-                  <div className="flex flex-col md:flex-row gap-6">
-                    <div className="flex-[2] flex flex-col gap-3">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">
-                        البيانات
-                      </label>
-                      <textarea
-                        value={bulkData}
-                        onChange={(e) => setBulkData(e.target.value)}
-                        placeholder={
-                          bulkType === "teachers"
-                            ? "أسماء المعلمين (اسم في كل سطر)..."
-                            : bulkType === "classes"
-                              ? "أسماء الفصول (اسم في كل سطر)..."
-                              : bulkType === "students"
-                                ? "أسماء الطلاب (اسم في كل سطر)..."
-                                : bulkType === "skills"
-                                  ? "المهارة | السؤال 1 | السؤال 2 (في كل سطر)..."
-                                  : "لصق JSON الاختبارات هنا..."
-                        }
-                        className="w-full h-80 lg:h-96 bg-white border-2 border-slate-200 rounded-[24px] p-6 text-sm font-bold resize-none outline-none focus:border-indigo-500 font-mono shadow-sm"
-                      />
-                    </div>
-
-                    <div className="flex-[1] flex flex-col gap-6">
-                      {bulkType === "students" && (
-                        <div className="space-y-3">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">
-                            تعيين في فصل (إختياري)
-                          </label>
-                          <select
-                            value={bulkClassId}
-                            onChange={(e) => setBulkClassId(e.target.value)}
-                            className="w-full h-14 bg-white border border-slate-200 rounded-xl px-4 font-bold outline-none cursor-pointer"
-                          >
-                            <option value="">بدون فصل</option>
-                            {data.classes
-                              .filter((c) => !c.isArchived)
-                              .map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                      )}
-
-                      {bulkType === "skills" && (
-                        <div className="space-y-3">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">
-                            تعيين لمادة (إختياري)
-                          </label>
-                          <select
-                            value={bulkSubjectId}
-                            onChange={(e) => setBulkSubjectId(e.target.value)}
-                            className="w-full h-14 bg-white border border-slate-200 rounded-xl px-4 font-bold outline-none cursor-pointer"
-                          >
-                            <option value="">بدون مادة محددة</option>
-                            {data.subjects
-                              .filter((s) => !s.isArchived)
-                              .map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.name} -{" "}
-                                  {data.classes.find((c) => c.id === s.classId)
-                                    ?.name || "عام"}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                      )}
-
-                      {bulkType === "quizzes" && (
-                        <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 text-xs text-indigo-900 leading-relaxed font-bold">
-                          <p className="mb-2 uppercase text-[10px] tracking-widest text-indigo-400">
-                            صيغة اختبارات الاستيراد المدعومة
-                          </p>
-                          <p>
-                            يرجى لصق بيانات JSON للاختبارات بالصيغة التالية (حقل
-                            gradeName اختياري، وإذا تركه سيتم تعيين الاختبار
-                            لجميع الصفوف التي تدرس المادة):
-                          </p>
-                          <pre
-                            className="mt-4 text-[10px] font-mono text-left bg-white p-4 rounded-2xl border border-indigo-100 overflow-x-auto"
-                            dir="ltr"
-                          >
-                            {`[
-  {
-    "title": "اختبار الرياضيات الأسبوعي",
-    "subjectName": "الرياضيات",
-    "gradeName": "الصف الأول الأبتدائي", 
-    "questions": [
-      {
-        "text": "٢ + ٢ =",
-        "options": ["٢", "٣", "٤", "٥"],
-        "correctAnswerIndex": 2
-      }
-    ]
-  }
-]`}
-                          </pre>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={handleBulkImport}
-                        disabled={isProcessing || !bulkData.trim()}
-                        className="mt-auto h-16 w-full rounded-2xl bg-indigo-600 text-white font-black text-lg hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Save size={20} />
-                        {isProcessing ? "جاري الرفع..." : "بدء الاستيراد"}
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>

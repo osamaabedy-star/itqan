@@ -39,13 +39,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="bg-white text-slate-800 h-20 flex items-center justify-between px-4 md:px-8 shadow-minimal border-b border-slate-100 sticky top-0 z-50 shrink-0" dir="rtl">
+    <header className="bg-white text-slate-800 h-16 flex items-center justify-between px-4 md:px-8 shadow-minimal border-b border-slate-100 sticky top-0 z-50 shrink-0" dir="rtl">
       <div className="flex items-center gap-6">
         <div 
-          className="flex items-center gap-4 cursor-pointer" 
+          className="flex items-center gap-3 cursor-pointer" 
           onClick={() => onNavigate('dashboard')}
         >
-          <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center overflow-hidden">
+          <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center overflow-hidden">
             <img 
               src="https://www.wzufa.com/wp-content/uploads/2022/07/Riyadh-Al-Ebdaa-Schools.png" 
               alt="Logo" 
@@ -54,8 +54,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
           </div>
           <div>
-             <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">إتقان</h1>
-             <p className="text-[10px] font-black text-indigo-600 mt-1">أستاذ • أسامة إبراهيم</p>
+             <h1 className="text-lg font-black tracking-tight text-slate-900 leading-none">إتقان</h1>
+             <p className="text-[9px] font-black text-indigo-600 mt-1">أستاذ • أسامة إبراهيم</p>
           </div>
         </div>
 

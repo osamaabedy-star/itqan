@@ -6,6 +6,7 @@ export interface Teacher {
   isArchived?: boolean;
   photoUrl?: string;
   specialization?: string;
+  nationalId?: string;
 }
 
 export interface Grade {
@@ -79,6 +80,7 @@ export interface Student {
   isArchived?: boolean;
   academicYear?: string;
   photoUrl?: string;
+  nationalId?: string;
 }
 
 export type EvaluationScore = 'mastered' | 'advanced' | 'accepted' | 'weak' | 'very-weak' | null;
@@ -187,4 +189,5 @@ export interface AppData {
   rubrics?: Rubric[];
   externalProfiles?: ExternalProfile[];
   quizSignatures?: QuizSignature[];
+  settings?: any[];
 }

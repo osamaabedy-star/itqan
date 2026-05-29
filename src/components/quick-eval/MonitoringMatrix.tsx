@@ -182,16 +182,15 @@ export function MonitoringMatrix({ data, evaluations, setEvaluations, onClose, o
              </select>
           </div>
 
-          <div className="flex flex-col gap-1 flex-1">
-             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2 leading-none">البحث</label>
+          <div className="flex flex-col justify-end w-44 md:w-48">
              <div className="relative">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
                 <input 
                   type="text"
-                  placeholder="اسم الطالب..."
+                  placeholder="بحث..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 font-black text-[12px] outline-none focus:ring-4 focus:ring-indigo-100"
+                  className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg pr-8 pl-3 font-black text-[11px] outline-none focus:ring-2 focus:ring-indigo-100 placeholder-slate-400"
                 />
              </div>
           </div>

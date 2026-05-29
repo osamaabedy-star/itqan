@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppData, Class, Student, Quiz, Grade } from '../types';
-import { Users, ChevronRight, BrainCircuit, Search, BookOpen, ArrowRight, ShieldCheck, Award, XCircle, X, CheckCircle2, Zap } from 'lucide-react';
+import { Users, ChevronRight, BrainCircuit, Search, BookOpen, ArrowRight, ShieldCheck, Award, XCircle, CheckCircle2 } from 'lucide-react';
 
 interface QuizLoginProps {
   data: AppData;
@@ -94,7 +94,7 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
       </div>
 
       {/* Top Navigation */}
-      <header className="p-4 md:p-6 flex justify-between items-center relative z-10 border-b border-white/5 bg-slate-950/20 backdrop-blur-sm">
+      <div className="p-3 md:py-3 md:px-6 flex justify-between items-center relative z-10 border-b border-white/5 bg-slate-950/20 backdrop-blur-sm">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
             <ShieldCheck className="text-white" size={20} />
@@ -131,9 +131,9 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
           <span className="text-[10px] font-black">خروج</span>
           <XCircle size={16} />
         </button>
-      </header>
+      </div>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 relative z-10 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-start py-4 px-6 md:py-6 md:px-12 relative z-10 overflow-y-auto">
         <div className="w-full max-w-6xl">
           <AnimatePresence mode="wait">
             {step === 'stage' && (
@@ -151,9 +151,9 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
                   {STAGES.map((stg) => (
                     <motion.button 
-                      key={stg.id}
-                      onClick={() => handleStageSelect(stg.id)}
-                      className="bg-white/5 hover:bg-indigo-600 p-8 rounded-3xl border border-white/10 text-white font-black text-xl transition-all"
+                       key={stg.id}
+                       onClick={() => handleStageSelect(stg.id)}
+                       className="bg-white/5 hover:bg-indigo-600 p-8 rounded-3xl border border-white/10 text-white font-black text-xl transition-all"
                     >
                       {stg.name}
                     </motion.button>
@@ -256,69 +256,50 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                            animate={{ opacity: 1, y: 0 }}
                            transition={{ delay: idx * 0.1 }}
                            onClick={() => handleQuizSelect(quiz)}
-                           className="group relative h-[420px] bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 rounded-[48px] text-right transition-all hover:border-indigo-500/50 flex flex-col overflow-hidden shadow-2xl"
+                           className="group relative h-[145px] bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 rounded-2xl text-right transition-all hover:border-indigo-500/50 flex flex-col overflow-hidden shadow-lg"
                          >
                             {/* Background Image / Gradient */}
                             <div className="absolute inset-0 z-0">
                                {quiz.imageUrl ? (
                                   <img src={quiz.imageUrl} alt="" className="w-full h-full object-cover opacity-30 group-hover:opacity-50 group-hover:scale-110 transition-all duration-700" referrerPolicy="no-referrer" />
                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-br from-indigo-600/20 to-purple-600/20" />
+                                  <div className="w-full h-full bg-gradient-to-br from-indigo-600/10 to-purple-600/10" />
                                )}
-                               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent" />
+                               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent" />
                             </div>
 
-                            <div className="relative z-10 p-8 flex flex-col h-full justify-between">
+                            <div className="relative z-10 p-3 h-full flex flex-col justify-between">
                                <div className="flex justify-between items-start">
-                                  <div className="w-16 h-16 rounded-[24px] bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-xl group-hover:bg-indigo-600 group-hover:border-indigo-500 transition-all group-hover:scale-110">
-                                     <BrainCircuit size={32} className="text-white" />
+                                  <div className="w-8 h-8 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-sm">
+                                     <BrainCircuit size={14} className="text-white" />
                                   </div>
-                                  <div className="flex flex-col items-end gap-2">
-                                     <span className="px-4 py-1.5 bg-indigo-600 text-white rounded-full text-[10px] font-black shadow-lg shadow-indigo-500/20">
+                                  <div className="flex flex-col items-end gap-0.5">
+                                     <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-full text-[8px] font-black shadow-sm">
                                         {subjectName}
                                      </span>
-                                     <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-300">
-                                        <CheckCircle2 size={12} />
-                                        {completionCount} / {totalCount} تم الرصد
+                                     <div className="flex items-center gap-0.5 text-[8px] font-black text-indigo-300">
+                                        <CheckCircle2 size={8} />
+                                        {completionCount} / {totalCount} رصد
                                      </div>
                                   </div>
                                </div>
-                               
-                               <div className="space-y-4">
-                                  <div className="space-y-2">
-                                     <h3 className="text-2xl font-black text-white group-hover:text-amber-400 transition-colors leading-tight drop-shadow-lg">{quiz.title}</h3>
-                                     <div className="flex items-center gap-4">
-                                        <p className="text-slate-400 font-bold text-xs flex items-center gap-1">
-                                           <BookOpen size={14} />
-                                           {quiz.questions.length} أسئلة مهارية
-                                        </p>
-                                        <p className="text-indigo-400/80 font-bold text-xs flex items-center gap-1">
-                                           <Zap size={14} className="fill-current" />
-                                           تفاعلي
-                                        </p>
-                                     </div>
-                                  </div>
 
-                                  <div className="pt-6 border-t border-white/10 flex justify-between items-center">
-                                     <div className="flex -space-x-3">
-                                        {[1,2,3,4].map(i => (
-                                          <div key={i} className="w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 overflow-hidden ring-2 ring-white/5">
-                                             <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${quiz.id + i}`} alt="" />
-                                          </div>
-                                        ))}
-                                        <div className="w-8 h-8 rounded-full border-2 border-slate-950 bg-indigo-900 flex items-center justify-center text-[10px] font-black text-white ring-2 ring-white/5">
-                                           +{totalCount}
-                                        </div>
-                                     </div>
-                                     <div className="bg-white/10 hover:bg-white text-white hover:text-indigo-950 w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-xl backdrop-blur-md border border-white/10">
-                                        <ArrowRight size={24} />
+                               <div className="space-y-1.5 text-right w-full">
+                                  <h3 className="text-xs font-black text-white group-hover:text-amber-400 transition-colors leading-tight line-clamp-1">{quiz.title}</h3>
+                                  <div className="pt-2 border-t border-white/10 flex justify-between items-center w-full">
+                                     <p className="text-slate-400 font-bold text-[8px] flex items-center gap-0.5">
+                                        <BookOpen size={10} />
+                                        {quiz.questions.length} أسئلة مهارية
+                                     </p>
+                                     <div className="bg-white/10 hover:bg-white text-white hover:text-indigo-950 w-6 h-6 rounded-lg flex items-center justify-center transition-all shadow-sm backdrop-blur-md border border-white/10 shrink-0">
+                                        <ArrowRight size={12} />
                                      </div>
                                   </div>
                                </div>
                             </div>
                             
                             {/* Animated Border/Glow effect */}
-                            <div className="absolute inset-0 border-2 border-white/0 group-hover:border-indigo-500/30 rounded-[48px] transition-all pointer-events-none" />
+                            <div className="absolute inset-0 border border-white/0 group-hover:border-indigo-500/20 rounded-2xl transition-all pointer-events-none" />
                          </motion.button>
                        );
                      })
@@ -338,61 +319,62 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="w-full max-w-2xl mx-auto space-y-8"
+                className="w-full max-w-4xl mx-auto space-y-4"
               >
-                <div className="text-center space-y-4">
-                  <div className="flex flex-col items-center gap-4">
-                     <button onClick={() => setStep('quiz')} className="text-indigo-400 text-[10px] font-black flex items-center gap-1 mx-auto bg-white/5 px-3 py-1.5 rounded-full"><ChevronRight size={14}/> العودة للاختبارات</button>
-                     <div className="w-16 h-16 rounded-3xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
-                        <Users size={32} />
-                     </div>
-                     <div>
-                        <h2 className="text-2xl font-black text-white tracking-tight">من فضلك اختر اسم الطالب لبدء الاختبار</h2>
-                        <p className="text-indigo-300/50 text-xs font-bold mt-1">اختبار: {selectedQuiz.title}</p>
-                     </div>
+                {/* Clean Header Row: Title on the right, small left-aligned search on user request */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-white/5 pb-4">
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <button onClick={() => setStep('quiz')} className="text-indigo-400 text-[10px] font-black flex items-center gap-1 bg-white/5 px-2.5 py-1 rounded-full hover:bg-white/10 transition-colors shrink-0">
+                      <ChevronRight size={12}/> عودة
+                    </button>
+                    <div className="text-right">
+                      <h2 className="text-base font-black text-white">اختر اسم الطالب</h2>
+                      <p className="text-slate-400 text-[9px] font-bold">اختبار: {selectedQuiz.title}</p>
+                    </div>
+                  </div>
+
+                  {/* Left-aligned small search bar, no explanation text */}
+                  <div className="relative w-full sm:w-60">
+                    <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                      <Search size={14} />
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="بحث عن اسم الطالب..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full h-9 pr-9 pl-3 bg-white/5 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-indigo-600/30 focus:border-indigo-500/50 transition-all font-sans text-right"
+                      autoFocus
+                    />
                   </div>
                 </div>
 
-                <div className="relative group">
-                   <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-indigo-400 group-focus-within:text-indigo-300 transition-colors">
-                      <Search size={18} />
-                   </div>
-                   <input 
-                     type="text" 
-                     placeholder="ابحث عن اسم الطالب..."
-                     value={searchTerm}
-                     onChange={(e) => setSearchTerm(e.target.value)}
-                     className="w-full h-16 pr-12 pl-6 bg-white/5 border border-white/10 rounded-2xl font-black text-lg text-white placeholder-slate-600 outline-none focus:ring-4 focus:ring-indigo-600/20 focus:border-indigo-500/50 transition-all font-sans"
-                     autoFocus
-                   />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto scrollbar-hide p-2 bg-white/5 rounded-[2.5rem] border border-white/10">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[420px] overflow-y-auto scrollbar-hide p-2 bg-white/5 rounded-2xl border border-white/10">
                    {studentList.length > 0 ? (
                      studentList.map((st, i) => (
                        <motion.button 
                          key={st.id}
                          initial={{ opacity: 0, y: 10 }}
                          animate={{ opacity: 1, y: 0 }}
-                         transition={{ delay: i * 0.02 }}
+                         transition={{ delay: i * 0.01 }}
                          onClick={() => onSelect(selectedQuiz, st)}
-                         className={`text-right p-5 rounded-3xl flex items-center gap-4 transition-all group relative overflow-hidden border ${st.isCompleted ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10 hover:bg-indigo-600 hover:border-indigo-600'}`}
+                         className={`text-right p-2.5 rounded-xl flex items-center gap-2.5 transition-all group relative overflow-hidden border ${st.isCompleted ? 'bg-emerald-500/10 border-emerald-500/35' : 'bg-white/5 border-white/5 hover:bg-indigo-600/90 hover:border-indigo-600'}`}
                        >
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white transition-colors ${st.isCompleted ? 'bg-emerald-500' : 'bg-white/10 group-hover:bg-white/20'}`}>
-                             {st.isCompleted ? <CheckCircle2 size={24} /> : st.name.charAt(0)}
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs text-white shrink-0 transition-colors ${st.isCompleted ? 'bg-emerald-500' : 'bg-white/10 group-hover:bg-white/20'}`}>
+                             {st.isCompleted ? <CheckCircle2 size={14} /> : st.name.charAt(0)}
                           </div>
-                          <div className="flex-1">
-                             <p className={`font-black text-base ${st.isCompleted ? 'text-emerald-400' : 'text-white'}`}>{st.name}</p>
-                             <p className={`${st.isCompleted ? 'text-emerald-500/60' : 'text-slate-500 group-hover:text-indigo-200'} text-[10px] font-bold italic`}>
-                                {st.isCompleted ? 'تم إنجاز الاختبار ✅' : 'انقر للبدء الآن'}
+                          <div className="flex-1 min-w-0">
+                             <p className={`font-black text-xs truncate ${st.isCompleted ? 'text-emerald-400' : 'text-white'}`}>{st.name}</p>
+                             <p className={`${st.isCompleted ? 'text-emerald-500/60' : 'text-slate-500 group-hover:text-indigo-200'} text-[8px] font-bold`}>
+                                {st.isCompleted ? 'تم الإنجاز ✓' : 'انقر للبدء'}
                              </p>
                           </div>
-                          <ChevronRight size={18} className={`${st.isCompleted ? 'text-emerald-500' : 'text-slate-600 group-hover:text-white'} transition-all transform group-hover:translate-x-1`} />
+                          <ChevronRight size={12} className={`${st.isCompleted ? 'text-emerald-500' : 'text-slate-600 group-hover:text-white'} transition-all transform group-hover:translate-x-0.5 shrink-0`} />
                        </motion.button>
                      ))
                    ) : (
                      <div className="col-span-full py-12 text-center">
-                        <p className="text-slate-500 font-bold text-sm">لم يتم العثور على طلاب في هذا الفصل</p>
+                        <p className="text-slate-500 font-bold text-xs">لم يتم العثور على طلاب في هذا الفصل</p>
                      </div>
                    )}
                 </div>
@@ -400,17 +382,7 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
             )}
           </AnimatePresence>
         </div>
-      </main>
-
-      <footer className="p-8 text-center relative z-10 border-t border-white/5 bg-slate-950/40 backdrop-blur-md">
-        <div className="flex flex-col md:flex-row items-center justify-center gap-4 text-indigo-400 font-bold text-xs uppercase tracking-[0.25em]">
-           <span>نظام إتقان الإلكتروني</span>
-           <span className="hidden md:block w-1.5 h-1.5 bg-indigo-600 rounded-full" />
-           <span>التقييم المستند للأداء</span>
-           <span className="hidden md:block w-1.5 h-1.5 bg-indigo-600 rounded-full" />
-           <span>{new Date().getFullYear()}</span>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }

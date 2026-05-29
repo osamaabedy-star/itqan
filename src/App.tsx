@@ -275,8 +275,9 @@ export default function App() {
           setLoginError('عذراً، رقم الهوية هذا غير مسجل في النظام');
         }
       } else if (loginRole === 'student') {
-        // Find matching student by ID or Name
+        // Find matching student by National ID, ID, or Name
         const student = appData.students.find(s => 
+          (s.nationalId && s.nationalId.trim() === input) ||
           s.id.toLowerCase() === input.toLowerCase() || 
           s.name.trim().toLowerCase() === input.toLowerCase() ||
           s.name.trim().replace(/\s+/g, ' ').toLowerCase() === input.replace(/\s+/g, ' ').toLowerCase()
@@ -287,7 +288,7 @@ export default function App() {
           setShowStudentQuizPortal(true);
           setView('student-portal');
         } else {
-          setLoginError('لم يتم العثور على طالب بهذا الاسم أو رقم الهوية. يرجى التأكد من كتابة الاسم صحيحاً كما هو مسجل في كشف المدرسة.');
+          setLoginError('لم يتم العثور على طالب برقم الهوية أو الاسم المدخل. يرجى التأكد من التسجيل أو كتابة البيانات بشكل صحيح.');
         }
       }
     } catch (err) {
@@ -487,6 +488,7 @@ export default function App() {
       firestoreService.subscribeToCollection('rubrics', (data) => setAppData(prev => ({ ...prev, rubrics: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('externalProfiles', (data) => setAppData(prev => ({ ...prev, externalProfiles: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('quizSignatures', (data) => setAppData(prev => ({ ...prev, quizSignatures: data.length > 0 ? data : [] }))),
+      firestoreService.subscribeToCollection('settings', (data) => setAppData(prev => ({ ...prev, settings: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToEvaluations((newEvals) => setEvaluations(newEvals))
     ];
 
@@ -671,14 +673,18 @@ export default function App() {
         >
           {/* School Identity Header */}
           <div className="flex flex-col items-center text-center space-y-4 mb-8">
-            <div className="w-20 h-20 rounded-[2rem] bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-sm">
-              <svg className="w-12 h-12 text-indigo-700" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M50 5C75 5 85 20 85 45C85 70 65 90 50 95C35 90 15 70 15 45C15 20 25 5 50 5Z" fill="currentColor" fillOpacity="0.06" stroke="currentColor" strokeWidth="4" strokeLinejoin="round"/>
-                <path d="M32 60C45 60 50 48 50 48C50 48 55 60 68 60" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M32 40C45 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                <path d="M68 40C55 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                <path d="M50 18L52.5 24H58.5L53.5 27.5L55.5 33L50 29.5L44.5 33L46.5 27.5L41.5 24H47.5L50 18Z" fill="#FBBF24"/>
-              </svg>
+            <div className={`w-20 h-20 rounded-[2rem] ${appData.settings?.[0]?.schoolLogoUrl ? '' : 'bg-indigo-50 border border-indigo-100'} flex items-center justify-center text-indigo-700 shadow-sm overflow-hidden`}>
+              {appData.settings?.[0]?.schoolLogoUrl ? (
+                <img src={appData.settings?.[0]?.schoolLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                <svg className="w-12 h-12 text-indigo-700" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M50 5C75 5 85 20 85 45C85 70 65 90 50 95C35 90 15 70 15 45C15 20 25 5 50 5Z" fill="currentColor" fillOpacity="0.06" stroke="currentColor" strokeWidth="4" strokeLinejoin="round"/>
+                  <path d="M32 60C45 60 50 48 50 48C50 48 55 60 68 60" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M32 40C45 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                  <path d="M68 40C55 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                  <path d="M50 18L52.5 24H58.5L53.5 27.5L55.5 33L50 29.5L44.5 33L46.5 27.5L41.5 24H47.5L50 18Z" fill="#FBBF24"/>
+                </svg>
+              )}
             </div>
             
             <div className="space-y-1">
@@ -759,7 +765,7 @@ export default function App() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-black text-slate-700 block mr-1 text-right">
-                    {loginRole === 'student' ? 'رقم الهوية أو اسم الطالب ثلاثياً' : 'أدخل رقم الهوية الشخصية'}
+                    {loginRole === 'student' ? 'رقم الهوية الشخصية للطالب' : 'أدخل رقم الهوية الشخصية'}
                   </label>
                   <input
                     type="text"
@@ -767,7 +773,7 @@ export default function App() {
                     onChange={(e) => setLoginIdInput(e.target.value)}
                     placeholder={
                       loginRole === 'student' 
-                        ? 'مثال: st1 أو اكتب اسم الطالب...' 
+                        ? 'أدخل رقم الهوية الوطنية للطالب للدخول...' 
                         : 'أدخل رقم الهوية المسجل...'
                     }
                     className="w-full h-14 px-4 bg-slate-50 border border-slate-100 focus:border-indigo-400 focus:bg-white rounded-2xl outline-none text-slate-800 text-sm font-bold transition-all text-right shadow-inner"
@@ -861,27 +867,27 @@ export default function App() {
           )}
 
           {view === 'student-portal' && studentSession && (
-            <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-12 font-sans" dir="rtl">
-              <div className="max-w-4xl mx-auto space-y-8">
+            <div className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-6 font-sans" dir="rtl">
+              <div className="max-w-4xl mx-auto space-y-4">
                 {/* Header Card */}
-                <div className="bg-gradient-to-l from-indigo-700 to-indigo-900 rounded-[2.5rem] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl">
+                <div className="bg-gradient-to-l from-indigo-700 to-indigo-900 rounded-2xl p-5 md:p-6 text-white relative overflow-hidden shadow-xl">
                   <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[150%] bg-white/[0.04] rounded-full blur-[60px] pointer-events-none" />
-                  <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="space-y-4">
+                  <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-3">
                       {/* Shield Icon & School Title */}
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-md">
-                          <BookOpen className="text-white w-6 h-6" />
+                      <div className="flex items-center gap-2">
+                        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md">
+                          <BookOpen className="text-white w-5 h-5" />
                         </div>
                         <div>
-                          <p className="text-white/60 text-xs font-black uppercase leading-none">مدارس رياض الإبداع</p>
-                          <h2 className="text-sm font-black text-yellow-300 mt-1">منصة إتقان لتقييم المهارات</h2>
+                          <p className="text-white/60 text-[10px] font-black uppercase leading-none">مدارس رياض الإبداع</p>
+                          <h2 className="text-xs font-black text-yellow-300 mt-1">منصة إتقان لتقييم المهارات</h2>
                         </div>
                       </div>
                       
-                      <div className="space-y-1">
-                        <p className="text-white/60 text-xs font-bold text-indigo-200">مرحباً بك يا بطل المستقبل 🏆</p>
-                        <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">{studentSession.name}</h1>
+                      <div className="space-y-0.5">
+                        <p className="text-white/60 text-[10px] font-bold text-indigo-200">مرحباً بك يا بطل المستقبل 🏆</p>
+                        <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">{studentSession.name}</h1>
                       </div>
                       
                       {/* Class name / Grade Info */}
@@ -889,9 +895,9 @@ export default function App() {
                         const sClass = appData.classes.find(c => c.id === studentSession.classId);
                         const sGrade = sClass ? appData.grades.find(g => g.id === sClass.gradeId) : null;
                         return (
-                          <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-xs font-bold backdrop-blur-md text-indigo-100">
+                          <div className="inline-flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-full text-[10px] font-bold backdrop-blur-md text-indigo-100">
                             <span>{sGrade?.name || 'الصف الدراسي'}</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                            <span className="w-1 h-1 rounded-full bg-yellow-400"></span>
                             <span>الفصل: {sClass?.name || 'أ'}</span>
                           </div>
                         );
@@ -905,7 +911,7 @@ export default function App() {
                         setShowStudentQuizPortal(false);
                         setView('login');
                       }}
-                      className="px-6 h-12 bg-white/10 hover:bg-rose-600 hover:text-white text-indigo-100 rounded-2xl font-black flex items-center justify-center gap-2 backdrop-blur-md transition-all self-start md:self-center"
+                      className="px-4 h-10 bg-white/10 hover:bg-rose-600 hover:text-white text-indigo-100 rounded-xl text-xs font-black flex items-center justify-center gap-2 backdrop-blur-md transition-all self-start md:self-center"
                     >
                       <LogOut size={16} />
                       <span>تسجيل الخروج</span>
@@ -962,7 +968,7 @@ export default function App() {
                     }
 
                     return (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {availableQuizzes.map(quiz => {
                           // Check if quiz is already solved
                           const result = appData.quizResults?.find(r => r.studentId === studentSession.id && r.quizId === quiz.id);
@@ -971,15 +977,15 @@ export default function App() {
                           return (
                             <div 
                               key={quiz.id} 
-                              className={`bg-white rounded-3xl p-6 border transition-all duration-300 flex flex-col justify-between h-48 ${
+                              className={`bg-white rounded-2xl p-4 border transition-all duration-300 flex flex-col justify-between h-40 ${
                                 isCompleted 
                                 ? 'border-emerald-100 bg-emerald-50/10' 
                                 : 'border-slate-100 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-500/5'
                               }`}
                             >
-                              <div className="space-y-3">
+                              <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold">
+                                  <span className="inline-flex items-center gap-1.5 px-2 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold">
                                     <BookOpen size={12} />
                                     {quiz.subjectName || 'مادة دراسية'}
                                   </span>
@@ -995,13 +1001,13 @@ export default function App() {
                                   )}
                                 </div>
                                 
-                                <h4 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">{quiz.title}</h4>
-                                <p className="text-xs text-slate-400 font-bold">عدد الأسئلة: {quiz.questions.length} أسئلة مهارية</p>
+                                <h4 className="text-base font-black text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">{quiz.title}</h4>
+                                <p className="text-[10px] text-slate-400 font-bold">عدد الأسئلة: {quiz.questions.length} أسئلة مهارية</p>
                               </div>
 
                               {isCompleted ? (
-                                <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                  <span className="text-xs font-bold text-slate-400">لقد أكملت هذا التقييم</span>
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-50">
+                                  <span className="text-[10px] font-bold text-slate-400">لقد أكملت هذا التقييم</span>
                                   <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
                                     <CheckCircle2 size={16} />
                                   </div>
