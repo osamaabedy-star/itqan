@@ -39,9 +39,10 @@ interface ExternalPortalProps {
   evaluations: Evaluations;
   academicYear: string;
   onClose: () => void;
+  onLogout?: () => void;
 }
 
-export function ExternalPortal({ data, evaluations, academicYear, onClose }: ExternalPortalProps) {
+export function ExternalPortal({ data, evaluations, academicYear, onClose, onLogout }: ExternalPortalProps) {
   const [profile, setProfile] = useState<ExternalProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [idInput, setIdInput] = useState('');
@@ -153,6 +154,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose }: Ext
     setProfile(null);
     setIdInput('');
     localStorage.removeItem('external_id');
+    if (onLogout) onLogout();
   };
 
   useEffect(() => {

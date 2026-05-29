@@ -22,7 +22,8 @@ import {
   AppData, 
   Teacher, 
   Quiz,
-  QuizResult
+  QuizResult,
+  ExternalProfile
 } from './types';
 import SignatureCanvas from 'react-signature-canvas';
 import { 
@@ -208,6 +209,94 @@ export default function App() {
   const [showStudentQuizPortal, setShowStudentQuizPortal] = useState(false);
   const [globalFilterTeacherId, setGlobalFilterTeacherId] = useState('');
   const [isTeacherReportMode, setIsTeacherReportMode] = useState(false);
+
+  const [externalProfile, setExternalProfileState] = useState<ExternalProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('itqan-external-profile');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [studentSession, setStudentSession] = useState<Student | null>(() => {
+    try {
+      const saved = localStorage.getItem('itqan-student-session');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  useEffect(() => {
+    if (externalProfile) {
+      localStorage.setItem('itqan-external-profile', JSON.stringify(externalProfile));
+      localStorage.setItem('external_id', externalProfile.id);
+    } else {
+      localStorage.removeItem('itqan-external-profile');
+      localStorage.removeItem('external_id');
+    }
+  }, [externalProfile]);
+
+  useEffect(() => {
+    if (studentSession) {
+      localStorage.setItem('itqan-student-session', JSON.stringify(studentSession));
+    } else {
+      localStorage.removeItem('itqan-student-session');
+    }
+  }, [studentSession]);
+
+  const [loginRole, setLoginRole] = useState<'admin' | 'teacher' | 'supervisor' | 'student'>('student');
+  const [loginIdInput, setLoginIdInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoginProcessing, setIsLoginProcessing] = useState(false);
+
+  const handleUnifiedLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginRole !== 'admin' && !loginIdInput.trim()) {
+      setLoginError('يرجى إدخال رقم الهوية أو الاسم المطلوب');
+      return;
+    }
+    
+    setLoginError('');
+    setIsLoginProcessing(true);
+    
+    try {
+      await firestoreService.loginAnonymously();
+      const input = loginIdInput.trim();
+      
+      if (loginRole === 'teacher' || loginRole === 'supervisor') {
+        const p = (await firestoreService.getExternalProfile(input)) as ExternalProfile | null;
+        if (p && !p.isArchived) {
+          if (p.role === loginRole) {
+            setExternalProfileState(p);
+            setView('external-portal');
+          } else {
+            const roleNameAr = loginRole === 'teacher' ? 'معلم' : 'مشرف';
+            const profileRoleNameAr = p.role === 'teacher' ? 'معلم' : 'مشرف';
+            setLoginError(`رقم الهوية المدخل مسجل كـ (${profileRoleNameAr}) وليس كـ (${roleNameAr})`);
+          }
+        } else {
+          setLoginError('عذراً، رقم الهوية هذا غير مسجل في النظام');
+        }
+      } else if (loginRole === 'student') {
+        // Find matching student by ID or Name
+        const student = appData.students.find(s => 
+          s.id.toLowerCase() === input.toLowerCase() || 
+          s.name.trim().toLowerCase() === input.toLowerCase() ||
+          s.name.trim().replace(/\s+/g, ' ').toLowerCase() === input.replace(/\s+/g, ' ').toLowerCase()
+        );
+        
+        if (student && !student.isArchived) {
+          setStudentSession(student);
+          setShowStudentQuizPortal(true);
+          setView('student-portal');
+        } else {
+          setLoginError('لم يتم العثور على طالب بهذا الاسم أو رقم الهوية. يرجى التأكد من كتابة الاسم صحيحاً كما هو مسجل في كشف المدرسة.');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setLoginError('حدث خطأ أثناء الاتصال بالنظام. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsLoginProcessing(false);
+    }
+  };
 
   // State Travel and Navigation Persistence
   type NavState = {
@@ -560,144 +649,159 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  // Check if we need to show the unified Login screen:
+  const isUserAdmin = !!(user && !user.isAnonymous);
+  const isTeacherActive = !!(externalProfile && view === 'external-portal');
+  const isStudentActive = !!(studentSession && (view === 'student-portal' || view === 'quiz'));
+
+  const showLogin = !isUserAdmin && !isTeacherActive && !isStudentActive;
+
+  if (showLogin) {
     return (
-      <div className="min-h-screen bg-white flex flex-col lg:flex-row font-sans overflow-hidden" dir="rtl">
-        {/* Left Side: Login Actions */}
-        <div className="flex-1 flex flex-col justify-center p-8 md:p-16 lg:p-24 bg-white relative overflow-hidden">
-          {/* Animated Background Blobs */}
-          <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-50 rounded-full blur-[100px] opacity-60 animate-pulse" />
-          <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-yellow-50 rounded-full blur-[100px] opacity-60" />
-          
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-xl relative z-10 mx-auto lg:mx-0"
-          >
-            <div className="flex items-center gap-6 mb-12">
-              <div className="bg-indigo-600 w-20 h-20 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-indigo-200 ring-4 ring-indigo-50">
-                <ShieldCheck className="text-white w-12 h-12" />
-              </div>
-              <div>
-                <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none mb-1">إتقـان</h1>
-                <p className="text-indigo-600 font-black text-xs uppercase tracking-[0.3em] flex items-center gap-2">
-                  <span className="w-8 h-[2px] bg-indigo-600"></span> Mastery Platform
-                </p>
-              </div>
-            </div>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans p-4 relative overflow-hidden" dir="rtl">
+        {/* Soft Background Blur Blobs */}
+        <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] bg-indigo-100 rounded-full blur-[120px] opacity-70 pointer-events-none" />
+        <div className="absolute bottom-[-20%] left-[-20%] w-[60%] h-[60%] bg-blue-50 rounded-full blur-[120px] opacity-70 pointer-events-none" />
 
-            <h2 className="text-2xl md:text-3xl font-black text-slate-900 leading-[1.1] mb-8 text-right">
-              نحو جيل <span className="text-transparent bg-clip-text bg-gradient-to-l from-indigo-600 to-blue-600">مبدع ومتمكن</span>
-            </h2>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="w-full max-w-md bg-white rounded-[2.5rem] border border-slate-100 shadow-[0_25px_60px_-15px_rgba(99,102,241,0.06)] p-8 md:p-10 relative z-10"
+        >
+          {/* School Identity Header */}
+          <div className="flex flex-col items-center text-center space-y-4 mb-8">
+            <div className="w-20 h-20 rounded-[2rem] bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-sm">
+              <svg className="w-12 h-12 text-indigo-700" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M50 5C75 5 85 20 85 45C85 70 65 90 50 95C35 90 15 70 15 45C15 20 25 5 50 5Z" fill="currentColor" fillOpacity="0.06" stroke="currentColor" strokeWidth="4" strokeLinejoin="round"/>
+                <path d="M32 60C45 60 50 48 50 48C50 48 55 60 68 60" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M32 40C45 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                <path d="M68 40C55 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                <path d="M50 18L52.5 24H58.5L53.5 27.5L55.5 33L50 29.5L44.5 33L46.5 27.5L41.5 24H47.5L50 18Z" fill="#FBBF24"/>
+              </svg>
+            </div>
             
-            <p className="text-slate-500 text-lg md:text-xl font-medium leading-relaxed mb-12 max-w-lg">
-              المنصة الوطنية الرائدة لرصد وتحليل مهارات الطلاب بشكل فوري، مزودة بأدوات ذكية لدعم المعلم وتطوير الأداء الأكاديمي.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-6 mb-12">
-              <button 
-                onClick={() => firestoreService.login()}
-                className="flex-1 h-20 bg-slate-900 text-white rounded-3xl font-black flex items-center justify-center gap-4 hover:shadow-[0_20px_50px_rgba(15,23,42,0.3)] hover:-translate-y-1 transition-all group shrink-0"
-              >
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <LogIn size={22} className="text-white" />
-                </div>
-                <div className="text-right">
-                  <span className="block text-xs font-bold opacity-60">بوابة الإدارة</span>
-                  <span className="text-lg">دخول المعلمين</span>
-                </div>
-              </button>
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase tracking-widest text-indigo-600/70 font-black">مدارس رياض الإبداع الأهلية</span>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">منصة إتقان لتقييم المهارات</h1>
+            </div>
+          </div>
 
-              <button 
-                onClick={() => { setShowStudentQuizPortal(true); setView('quiz-login'); }}
-                className="flex-1 h-20 bg-indigo-50 text-indigo-700 rounded-3xl font-black flex items-center justify-center gap-4 hover:bg-white hover:shadow-[0_20px_50px_rgba(79,70,229,0.15)] hover:-translate-y-1 transition-all border-2 border-indigo-100 group shrink-0"
+          {/* Job / Role Tabs Selector */}
+          <div className="bg-slate-50 border border-slate-100 p-1.5 rounded-2xl flex flex-wrap gap-1 items-center justify-between mb-8">
+            {(['student', 'teacher', 'supervisor', 'admin'] as const).map((role) => {
+              const labelMap = {
+                student: 'دخول طالب',
+                teacher: 'معلّم',
+                supervisor: 'مشرف',
+                admin: 'مسؤول'
+              };
+              
+              const isActive = loginRole === role;
+              
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => {
+                    setLoginRole(role);
+                    setLoginIdInput('');
+                    setLoginError('');
+                  }}
+                  className={`flex-1 min-w-[70px] h-10 rounded-xl text-xs font-black transition-all ${
+                    isActive 
+                      ? 'bg-slate-900 text-white shadow-md' 
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  {labelMap[role]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Form Actions Section */}
+          <form onSubmit={handleUnifiedLoginSubmit} className="space-y-6">
+            {loginError && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-2.5 text-rose-700 text-xs font-bold leading-relaxed-none"
               >
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-indigo-200">
-                  <BrainCircuit size={22} className="text-white" />
-                </div>
-                <div className="text-right">
-                  <span className="block text-xs font-bold opacity-60">بوابة الطالب</span>
-                  <span className="text-lg">دخول الاختبارات</span>
-                </div>
-              </button>
-            </div>
-            
-            <div className="mt-16 pt-12 border-t border-slate-100 flex flex-wrap items-center gap-8">
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-3 rtl:space-x-reverse">
-                  {[1,2,3,4].map(i => (
-                    <div key={i} className="w-12 h-12 rounded-2xl border-4 border-white bg-slate-100 overflow-hidden shadow-lg shadow-slate-200">
-                      <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${i + 10}`} alt="avatar" />
-                    </div>
-                  ))}
-                </div>
-                <div>
-                   <p className="text-sm font-black text-slate-800 tracking-tight">+1,200 معلم</p>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase">يستخدمون المنصة يومياً</p>
-                </div>
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <span>{loginError}</span>
+              </motion.div>
+            )}
+
+            {loginRole === 'admin' ? (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setLoginError('');
+                    setIsLoginProcessing(true);
+                    try {
+                      await firestoreService.login();
+                    } catch (err) {
+                      setLoginError('فشل تسجيل الدخول كمسؤول. الرجاء تكرار المحاولة وسوف نساعدك.');
+                    } finally {
+                      setIsLoginProcessing(false);
+                    }
+                  }}
+                  disabled={isLoginProcessing}
+                  className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-transform active:scale-[0.98] disabled:opacity-50"
+                >
+                  <LogIn size={18} />
+                  <span>دخول كمسؤول بالنظام (Google Auth)</span>
+                </button>
               </div>
-              <div className="hidden sm:block h-10 w-[1px] bg-slate-200 mx-4"></div>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-yellow-50 flex items-center justify-center text-yellow-600 shadow-lg shadow-yellow-100">
-                   <Award size={24} />
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-700 block mr-1 text-right">
+                    {loginRole === 'student' ? 'رقم الهوية أو اسم الطالب ثلاثياً' : 'أدخل رقم الهوية الشخصية'}
+                  </label>
+                  <input
+                    type="text"
+                    value={loginIdInput}
+                    onChange={(e) => setLoginIdInput(e.target.value)}
+                    placeholder={
+                      loginRole === 'student' 
+                        ? 'مثال: st1 أو اكتب اسم الطالب...' 
+                        : 'أدخل رقم الهوية المسجل...'
+                    }
+                    className="w-full h-14 px-4 bg-slate-50 border border-slate-100 focus:border-indigo-400 focus:bg-white rounded-2xl outline-none text-slate-800 text-sm font-bold transition-all text-right shadow-inner"
+                    disabled={isLoginProcessing}
+                  />
                 </div>
-                <div>
-                   <p className="text-sm font-black text-slate-800 tracking-tight">نظام متكامل</p>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase">إدارة، رصد، وتقارير</p>
-                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoginProcessing}
+                  className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-transform active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-indigo-600/10"
+                >
+                  {isLoginProcessing ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <LogIn size={18} />
+                      <span>تسجيل الدخول</span>
+                    </>
+                  )}
+                </button>
               </div>
-            </div>
-          </motion.div>
-        </div>
-        
-        {/* Right Side: Branding/Visual */}
-        <div className="hidden lg:flex flex-1 bg-slate-950 relative items-center justify-center overflow-hidden">
-          {/* Geometric Art Background */}
-          <div className="absolute inset-0 opacity-20">
-             <div className="grid grid-cols-12 gap-6 rotate-12 scale-150 transform-gpu translate-x-32">
-               {Array.from({length: 144}).map((_, i) => (
-                 <motion.div 
-                   key={i} 
-                   animate={{ opacity: [0.3, 0.6, 0.3], scale: [1, 1.05, 1] }}
-                   transition={{ duration: 4, delay: i * 0.05, repeat: Infinity }}
-                   className="aspect-square bg-white/20 rounded-2xl backdrop-blur-3xl" 
-                 />
-               ))}
-             </div>
-          </div>
-          
-          <div className="relative z-10 text-center text-white p-16 max-w-2xl">
-             <motion.div 
-               initial={{ opacity: 0, scale: 0.8 }}
-               animate={{ opacity: 1, scale: 1 }}
-               className="bg-white/5 backdrop-blur-2xl rounded-[4rem] p-16 border border-white/10 shadow-[0_50px_100px_rgba(0,0,0,0.5)]"
-             >
-                <div className="w-24 h-24 bg-yellow-400 rounded-3xl flex items-center justify-center mx-auto mb-10 shadow-2xl shadow-yellow-400/20">
-                  <Star size={48} className="text-indigo-900 fill-current" />
-                </div>
-                <h3 className="text-4xl font-black mb-6 tracking-tight leading-tight">الرؤية الجديدة للتعليم</h3>
-                <p className="text-indigo-100/60 text-lg font-medium leading-relaxed mb-12">
-                  "لقد صممنا منصة إتقان لتكون الشريك الذكي لكل معلم يسعى لتحويل عملية التقييم من مجرد رصد أرقام إلى أداة حقيقية لتحفيز الطلاب وتطوير مستواهم العلمي."
-                </p>
-                
-                <div className="flex flex-col items-center gap-4">
-                   <div className="h-1.5 w-32 bg-gradient-to-l from-yellow-400 to-amber-500 rounded-full" />
-                   <p className="text-[10px] font-black uppercase tracking-[0.5em] text-indigo-400">Education Beyond Numbers</p>
-                </div>
-             </motion.div>
-          </div>
-          
-          {/* Floating Accents */}
-          <motion.div animate={{ y: [0, -20, 0] }} transition={{ duration: 6, repeat: Infinity }} className="absolute top-20 right-20 w-32 h-32 bg-indigo-500/20 blur-3xl rounded-full" />
-          <motion.div animate={{ y: [0, 20, 0] }} transition={{ duration: 8, repeat: Infinity }} className="absolute bottom-20 left-20 w-40 h-40 bg-blue-500/20 blur-3xl rounded-full" />
-        </div>
+            )}
+          </form>
+        </motion.div>
       </div>
     );
   }
 
+  const isOuterNavbarVisible = isUserAdmin && !isTeacherReportMode && view !== 'external-portal' && view !== 'student-portal';
+
   return (
       <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-800 overflow-hidden print:h-auto print:bg-white print:overflow-visible print:block" dir="rtl">
-        {!isTeacherReportMode && (
+        {isOuterNavbarVisible && (
           <div className="print:hidden">
             <Navbar 
               activeView={view} 
@@ -745,8 +849,184 @@ export default function App() {
                data={appData}
                evaluations={evaluations}
                academicYear={academicYear}
-               onClose={() => setView('dashboard')}
+               onClose={() => {
+                 setExternalProfileState(null);
+                 setView('login');
+               }}
+               onLogout={() => {
+                 setExternalProfileState(null);
+                 setView('login');
+               }}
             />
+          )}
+
+          {view === 'student-portal' && studentSession && (
+            <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-12 font-sans" dir="rtl">
+              <div className="max-w-4xl mx-auto space-y-8">
+                {/* Header Card */}
+                <div className="bg-gradient-to-l from-indigo-700 to-indigo-900 rounded-[2.5rem] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl">
+                  <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[150%] bg-white/[0.04] rounded-full blur-[60px] pointer-events-none" />
+                  <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="space-y-4">
+                      {/* Shield Icon & School Title */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-md">
+                          <BookOpen className="text-white w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-white/60 text-xs font-black uppercase leading-none">مدارس رياض الإبداع</p>
+                          <h2 className="text-sm font-black text-yellow-300 mt-1">منصة إتقان لتقييم المهارات</h2>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <p className="text-white/60 text-xs font-bold text-indigo-200">مرحباً بك يا بطل المستقبل 🏆</p>
+                        <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">{studentSession.name}</h1>
+                      </div>
+                      
+                      {/* Class name / Grade Info */}
+                      {(() => {
+                        const sClass = appData.classes.find(c => c.id === studentSession.classId);
+                        const sGrade = sClass ? appData.grades.find(g => g.id === sClass.gradeId) : null;
+                        return (
+                          <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-xs font-bold backdrop-blur-md text-indigo-100">
+                            <span>{sGrade?.name || 'الصف الدراسي'}</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                            <span>الفصل: {sClass?.name || 'أ'}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    
+                    {/* Logout button */}
+                    <button 
+                      onClick={() => {
+                        setStudentSession(null);
+                        setShowStudentQuizPortal(false);
+                        setView('login');
+                      }}
+                      className="px-6 h-12 bg-white/10 hover:bg-rose-600 hover:text-white text-indigo-100 rounded-2xl font-black flex items-center justify-center gap-2 backdrop-blur-md transition-all self-start md:self-center"
+                    >
+                      <LogOut size={16} />
+                      <span>تسجيل الخروج</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Available Quizzes Section */}
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900">📝 الاختبارات والمهام النشطة</h3>
+                      <p className="text-xs text-slate-500 font-bold mt-1">الرجاء إكمال الاختبارات المطلوبة منك بدقة وإتقان</p>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const sClass = appData.classes.find(c => c.id === studentSession.classId);
+                    const sGrade = sClass ? appData.grades.find(g => g.id === sClass.gradeId) : null;
+                    
+                    const availableQuizzes = appData.quizzes.filter(q => {
+                      if (q.isArchived || q.status !== 'published') return false;
+                      
+                      // 1. If class specific assignments exist, must match
+                      if (q.classIds && q.classIds.length > 0) {
+                        return q.classIds.includes(studentSession.classId);
+                      }
+                      
+                      // 2. Fallback to Grade matches
+                      if (q.gradeId && sGrade) {
+                        return q.gradeId === sGrade.id;
+                      }
+                      
+                      // 3. Fallback to Stage matches
+                      if (q.stageId && sGrade) {
+                        return q.stageId === sGrade.stage;
+                      }
+                      
+                      return false;
+                    });
+
+                    if (availableQuizzes.length === 0) {
+                      return (
+                        <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 space-y-4">
+                          <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+                            <CheckCircle2 size={32} />
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-black text-slate-800">لا توجد اختبارات نشطة حالياً</h4>
+                            <p className="text-slate-400 text-xs mt-1">أنت متميز ومتقن لجميع المهارات المطلوبة منك!</p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {availableQuizzes.map(quiz => {
+                          // Check if quiz is already solved
+                          const result = appData.quizResults?.find(r => r.studentId === studentSession.id && r.quizId === quiz.id);
+                          const isCompleted = !!result;
+                          
+                          return (
+                            <div 
+                              key={quiz.id} 
+                              className={`bg-white rounded-3xl p-6 border transition-all duration-300 flex flex-col justify-between h-48 ${
+                                isCompleted 
+                                ? 'border-emerald-100 bg-emerald-50/10' 
+                                : 'border-slate-100 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-500/5'
+                              }`}
+                            >
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold">
+                                    <BookOpen size={12} />
+                                    {quiz.subjectName || 'مادة دراسية'}
+                                  </span>
+                                  {isCompleted ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full text-[10px] font-black">
+                                      <CheckCircle2 size={12} />
+                                      {result.score}% تم الحل
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-600 border border-amber-100 rounded-full text-[10px] font-black animate-pulse">
+                                      مستمر حالياً
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                <h4 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">{quiz.title}</h4>
+                                <p className="text-xs text-slate-400 font-bold">عدد الأسئلة: {quiz.questions.length} أسئلة مهارية</p>
+                              </div>
+
+                              {isCompleted ? (
+                                <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                                  <span className="text-xs font-bold text-slate-400">لقد أكملت هذا التقييم</span>
+                                  <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                                    <CheckCircle2 size={16} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <button 
+                                  onClick={() => {
+                                    setSelectedQuiz(quiz);
+                                    setSelectedStudent(studentSession);
+                                    setView('quiz');
+                                  }}
+                                  className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+                                >
+                                  <span>ابدأ الاختبار الآن 🚀</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
           )}
 
           {view === 'management' && (
@@ -784,7 +1064,10 @@ export default function App() {
                allSkills={appData.skills}
                allSubjects={appData.subjects}
                onClose={() => { 
-                if (showStudentQuizPortal) {
+                if (studentSession) {
+                   setView('student-portal');
+                   setSelectedQuiz(null);
+                } else if (showStudentQuizPortal) {
                    setView('quiz-login');
                    setSelectedQuiz(null);
                    setSelectedStudent(null);

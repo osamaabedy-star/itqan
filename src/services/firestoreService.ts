@@ -15,7 +15,8 @@ import {
   GoogleAuthProvider, 
   signOut,
   onAuthStateChanged,
-  User
+  User,
+  signInAnonymously
 } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { EvaluationScore, Evaluation } from '../types';
@@ -121,6 +122,16 @@ export const firestoreService = {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error('Login error:', error);
+    }
+  },
+
+  async loginAnonymously() {
+    try {
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+    } catch (error) {
+      console.error('Anonymous login error:', error);
     }
   },
 
