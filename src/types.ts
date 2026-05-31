@@ -69,6 +69,7 @@ export interface Quiz {
   questions: MCQQuestion[];
   isArchived?: boolean;
   status?: 'draft' | 'published';
+  term?: 'term1' | 'term2';
   updatedAt?: any;
   createdAt?: any;
 }
@@ -134,6 +135,7 @@ export interface Visit {
   quizId?: string;
   quizUrl?: string;
   rubricId?: string; // Reference to which rubric was used
+  term?: 'term1' | 'term2';
   isArchived?: boolean;
   evaluationData?: Record<string, number>; // Maps a criterion ID to a score
   signed?: boolean;
@@ -146,6 +148,7 @@ export interface QuizResult {
   id?: string;
   studentId: string;
   quizId: string;
+  title?: string;
   score: number; // Percentage
   answers: number[]; // Index of choices
   updatedAt: any;

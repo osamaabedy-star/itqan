@@ -54,6 +54,7 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
         firestoreService.saveQuizResult({
           studentId: student.id,
           quizId: quiz.id,
+          title: quiz.title, // Persist title
           score,
           answers: newAnswers,
           subjectId: quiz.subjectIds?.[0] || '',
@@ -109,52 +110,52 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
     const score = Math.round((correctCount / quiz.questions.length) * 100);
 
     return (
-      <div className="fixed inset-0 bg-indigo-900 z-[70] flex items-center justify-center p-8 text-white" dir="rtl">
+      <div className="fixed inset-0 bg-slate-50 z-[70] flex items-center justify-center p-8 text-slate-800" dir="rtl">
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className="max-w-md w-full text-center space-y-8"
         >
-          <div className="w-32 h-32 bg-yellow-400 rounded-full flex items-center justify-center mx-auto shadow-2xl animate-bounce">
-             <Award size={64} className="text-indigo-900" />
+          <div className="w-32 h-32 bg-amber-500 rounded-full flex items-center justify-center mx-auto shadow-xl ring-4 ring-amber-100 animate-bounce">
+             <Award size={64} className="text-white" />
           </div>
           <div>
-            <h2 className="text-4xl font-black mb-2">{student ? `أحسنت يا ${student.name}!` : 'اكتمل وضع المعاينة'}</h2>
-            <p className="text-indigo-200 font-bold">لقد أتممت اختبار {quiz.title}</p>
+            <h2 className="text-4xl font-black mb-2 text-slate-900">{student ? `أحسنت يا ${student.name}!` : 'اكتمل وضع المعاينة'}</h2>
+            <p className="text-slate-500 font-bold">لقد أتممت اختبار <span className="text-indigo-600 font-extrabold">{quiz.title}</span></p>
           </div>
           
-          <div className="bg-white/10 rounded-3xl p-8 backdrop-blur-md border border-white/10">
-             <p className="text-6xl font-black text-yellow-400 mb-2">{score}%</p>
-             <p className="text-sm font-bold opacity-70">لقد أجبت بشكل صحيح على {correctCount} من أصل {quiz.questions.length} أسئلة.</p>
+          <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-md">
+             <p className="text-6xl font-black text-indigo-600 mb-2">{score}%</p>
+             <p className="text-sm font-bold text-slate-500">لقد أجبت بشكل صحيح على {correctCount} من أصل {quiz.questions.length} أسئلة.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <button 
               onClick={onClose}
-              className="py-5 bg-white/10 text-white rounded-2xl font-black text-lg border border-white/20 hover:bg-white/20 transition-all font-sans"
+              className="py-5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-2xl font-black text-lg border border-slate-200 transition-all font-sans cursor-pointer"
             >
               العودة للرئيسية
             </button>
             {classStudents && student && classStudents.findIndex(s => s.id === student.id) < classStudents.length - 1 && (
               <button 
                 onClick={handleNextStudent}
-                className="py-5 bg-white text-indigo-900 rounded-2xl font-black text-lg shadow-2xl hover:scale-105 transition-transform"
+                className="py-5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-2xl font-black text-lg shadow-lg hover:scale-[1.02] transition-all cursor-pointer"
               >
                 الطالب التالي
               </button>
             )}
           </div>
 
-          <div className="mt-8 pt-8 border-t border-white/10 space-y-4">
-             <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">تحديث المؤشرات والتقارير</p>
+          <div className="mt-8 pt-8 border-t border-slate-200 space-y-4">
+             <p className="text-[10px] font-black text-slate-400 registrar-font uppercase tracking-widest">تحديث المؤشرات والتقارير</p>
              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center gap-2">
-                   <TrendingUp size={20} className="text-indigo-400" />
-                   <span className="text-[9px] font-black">مؤشر المرحلة محدث</span>
+                <div className="bg-slate-100 p-4 rounded-2xl border border-slate-200 flex flex-col items-center gap-2">
+                   <TrendingUp size={20} className="text-indigo-600" />
+                   <span className="text-[10px] font-black text-slate-600">مؤشر المرحلة محدث</span>
                 </div>
-                <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center gap-2">
-                   <ShieldCheck size={20} className="text-emerald-400" />
-                   <span className="text-[9px] font-black">مؤشر الصف محدث</span>
+                <div className="bg-slate-100 p-4 rounded-2xl border border-slate-200 flex flex-col items-center gap-2">
+                   <ShieldCheck size={20} className="text-emerald-500" />
+                   <span className="text-[10px] font-black text-slate-600">مؤشر الصف محدث</span>
                 </div>
              </div>
           </div>
@@ -165,56 +166,55 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
 
   return (
     <div className="fixed inset-0 bg-slate-50 z-[70] flex flex-col animate-in fade-in fill-mode-both" dir="rtl">
-      <header className="bg-white h-16 border-b border-slate-100 flex items-center justify-between px-6 relative z-[80] shadow-sm">
-         <div className="flex items-center gap-4">
-            <div className="bg-indigo-600 text-white w-10 h-10 rounded-xl flex items-center justify-center font-black text-base shadow-md shadow-indigo-100">
+      <header className="bg-white h-14 border-b border-slate-100 flex items-center justify-between px-4 relative z-[80] shadow-sm">
+         <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 text-white w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm shadow-md shadow-indigo-100">
                {currentQuestionIndex + 1}
             </div>
             <div>
-               <h2 className="text-base font-black text-slate-900 leading-tight">{quiz.title}</h2>
-               <div className="flex items-center gap-2 mt-1">
-                  <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+               <h2 className="text-sm font-black text-slate-900 leading-tight">{quiz.title}</h2>
+               <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
                      {classStudents && student && classStudents.length > 1 && (
                        <button 
                          onClick={handlePrevStudent}
-                         className="w-8 h-8 rounded-lg text-slate-400 hover:bg-white hover:text-indigo-600 transition-all flex items-center justify-center"
+                         className="w-7 h-7 rounded-md text-slate-400 hover:bg-white hover:text-indigo-600 transition-all flex items-center justify-center"
                          title="الطالب السابق"
                        >
-                          <ChevronLeft size={14} />
+                          <ChevronLeft size={12} />
                        </button>
                      )}
                      
-                     <div className="relative px-3">
+                     <div className="relative px-2">
                         <button 
                           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                          className="flex items-center gap-1.5 text-slate-700 font-black text-[10px]"
+                          className="flex items-center gap-1 text-slate-700 font-bold text-[9px]"
                         >
-                           <Users size={12} className="text-indigo-600" />
+                           <Users size={10} className="text-indigo-600" />
                            {student ? student.name : 'وضع المعاينة'}
                         </button>
                         
                         <AnimatePresence>
                            {isDropdownOpen && classStudents && onSelectStudent && (
                              <motion.div 
-                               initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                               animate={{ opacity: 1, y: 0, scale: 1 }}
-                               exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                               className="absolute top-full right-0 w-64 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[90] overflow-hidden"
+                                initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                                className="absolute top-full right-0 w-56 mt-1 bg-white rounded-xl shadow-2xl border border-slate-100 p-1.5 z-[90] overflow-hidden"
                              >
-                                <div className="max-h-60 overflow-y-auto scrollbar-hide">
+                                <div className="max-h-52 overflow-y-auto scrollbar-hide space-y-1">
                                    {classStudents.map(s => {
                                       const solved = hasSolved(s.id);
                                       return (
                                          <button 
                                            key={s.id} 
                                            onClick={() => { onSelectStudent(s); setIsDropdownOpen(false); }} 
-                                           className={`w-full text-right px-4 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-between group ${student && s.id === student.id ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}
+                                           className={`w-full text-right px-3 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-between group ${student && s.id === student.id ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}
                                          >
                                             <div className="flex items-center gap-2">
                                                {s.name}
-                                               {solved && <CheckCircle2 size={12} className="text-emerald-500" />}
+                                               {solved && <CheckCircle2 size={10} className="text-emerald-500" />}
                                             </div>
-                                            {student && s.id === student.id && <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" />}
                                          </button>
                                       );
                                    })}
@@ -227,9 +227,9 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
                      {classStudents && student && classStudents.findIndex(s => s.id === student.id) < classStudents.length - 1 && (
                        <button 
                          onClick={handleNextStudent}
-                         className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[9px] font-black hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1"
+                         className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md text-[8px] font-black hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1"
                        >
-                         التالي <ChevronRight size={10} className="rotate-180" />
+                          <ChevronRight size={8} className="rotate-180" />
                        </button>
                      )}
                   </div>
@@ -237,26 +237,25 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
             </div>
          </div>
          
-         <div className="flex items-center gap-4">
-            <div className="hidden md:flex gap-1.5">
+         <div className="flex items-center gap-3">
+            <div className="hidden sm:flex gap-1">
                {quiz.questions.map((_, i) => (
                  <div 
                    key={i} 
-                   className={`h-1.5 rounded-full transition-all duration-500 ${
-                     i === currentQuestionIndex ? 'bg-indigo-600 w-8' :
-                     i < currentQuestionIndex ? 'bg-emerald-500 w-3' : 'bg-slate-200 w-3'
+                   className={`h-1 rounded-full transition-all duration-500 ${
+                     i === currentQuestionIndex ? 'bg-indigo-600 w-6' :
+                     i < currentQuestionIndex ? 'bg-emerald-500 w-2' : 'bg-slate-200 w-2'
                    }`} 
                  />
                ))}
             </div>
-            <div className="w-[1px] h-8 bg-slate-100 mx-2 hidden md:block" />
+            <div className="w-[1px] h-6 bg-slate-100 mx-1 hidden sm:block" />
             <button 
               onClick={onClose} 
-              className="h-12 px-6 flex items-center justify-center gap-2 rounded-2xl bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-100 shadow-sm hover:shadow-md font-black text-xs"
-              title="خروج من الاختبار"
+              className="h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-100 shadow-sm font-black text-[10px]"
             >
-               <X size={18} />
-               <span>خروج</span>
+               <X size={16} />
+               <span className="hidden xs:inline">خروج</span>
             </button>
          </div>
       </header>

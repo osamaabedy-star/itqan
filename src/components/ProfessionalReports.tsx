@@ -34,6 +34,7 @@ import {
   Image
 } from 'lucide-react';
 import { AppData, Class, Quiz, QuizResult, Student, Grade, Evaluations } from '../types';
+import { SchoolLogo } from './SchoolLogo';
 import { firestoreService } from '../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 import { 
@@ -59,14 +60,18 @@ interface ProfessionalReportsProps {
   data: AppData;
   evaluations: Evaluations;
   academicYear: string;
+  displayYear: string;
+  activeTerm: 'term1' | 'term2';
   onSelectStudent?: (student: Student) => void;
   onClose?: () => void;
   filterTeacherId?: string;
+  onFilterTeacherChange?: (id: string) => void;
+  onSelectTeacher?: (teacher: any) => void;
   calculatePerformance?: (classId: string, subjectId?: string) => number;
 }
 
-export function ProfessionalReports({ data, evaluations, academicYear, onSelectStudent, onClose, filterTeacherId, calculatePerformance }: ProfessionalReportsProps) {
-  const [activeTab, setActiveTab] = useState<'quizzes' | 'skills' | 'students'>('quizzes');
+export function ProfessionalReports({ data, evaluations, academicYear, displayYear, activeTerm, onSelectStudent, onClose, filterTeacherId, onFilterTeacherChange, onSelectTeacher, calculatePerformance }: ProfessionalReportsProps) {
+  const [activeTab, setActiveTab] = useState<'quizzes' | 'skills' | 'students' | 'teachers'>('quizzes');
   const [selectedGradeId, setSelectedGradeId] = useState<string>('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -110,6 +115,8 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
     ...teacherDirectGradeIds
   ])).filter(Boolean);
 
+  const activeQuizIds = useMemo(() => new Set(data.quizzes.filter(q => !q.isArchived && (q.term || 'term1') === activeTerm).map(q => q.id)), [data.quizzes, activeTerm]);
+
   const grades = data.grades.filter(g => !g.isArchived && (!filterTeacherId || teacherGrades.includes(g.id)));
 
   const classes = data.classes.filter(c => !c.isArchived && 
@@ -137,7 +144,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
     });
 
     const studentStats = (studentId: string) => {
-      const results = data.quizResults.filter(r => r.studentId === studentId && !r.isArchived);
+      const results = data.quizResults.filter(r => r.studentId === studentId && !r.isArchived && activeQuizIds.has(r.quizId));
       const avg = results.length > 0 
         ? results.reduce((sum, r) => sum + r.score, 0) / results.length
         : 0;
@@ -208,7 +215,9 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                 data.subjects.some(s => s.name === q.subjectName && teacherSubjectIds.includes(s.id));
       if (!hasTeacherSubject) return false;
     }
-    return true;
+    // Only show quizzes that have been tested/evaluated by students (has results)
+    const hasResults = data.quizResults?.some(r => !r.isArchived && r.quizId === q.id);
+    return hasResults;
   });
 
   const handleExportQuizCardImage = async () => {
@@ -221,7 +230,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
       
       // Temporarily hide buttons
       const hiddenElements: HTMLElement[] = [];
-      document.querySelectorAll('[data-export-hide="true"], [data-close-hide="true"]').forEach((el) => {
+      element.querySelectorAll('[data-export-hide="true"], [data-close-hide="true"]').forEach((el) => {
         const htmlEl = el as HTMLElement;
         hiddenElements.push(htmlEl);
         htmlEl.style.display = 'none';
@@ -248,9 +257,11 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
     } catch (err) {
       console.error('Image Export Error:', err);
       // Restore buttons if err
-      document.querySelectorAll('[data-export-hide="true"], [data-close-hide="true"]').forEach((el) => {
-        (el as HTMLElement).style.display = '';
-      });
+      if (quizCardRef.current) {
+        quizCardRef.current.querySelectorAll('[data-export-hide="true"], [data-close-hide="true"]').forEach((el) => {
+          (el as HTMLElement).style.display = '';
+        });
+      }
       alert('حدث خطأ أثناء حفظ الملف كصورة: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsExportingImage(false);
@@ -263,12 +274,13 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
     
     // Allow any animations/charts to settle
     await new Promise(resolve => setTimeout(resolve, 800)); 
+    
+    const element = reportRef.current;
+    const hiddenElements: HTMLElement[] = [];
+    
     try {
-      const element = reportRef.current;
-      
       // Selectively hide buttons and interactive controls from export
-      const hiddenElements: HTMLElement[] = [];
-      document.querySelectorAll('[data-export-hide="true"], [data-close-hide="true"], button').forEach((el) => {
+      element.querySelectorAll('[data-export-hide="true"], [data-close-hide="true"], button').forEach((el) => {
         const htmlEl = el as HTMLElement;
         // Hide standard close or action buttons to keep output clean, but keep charts intact
         if (
@@ -293,11 +305,6 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
         }
       });
       
-      // Restore hidden UI elements immediately
-      hiddenElements.forEach((el) => {
-        el.style.display = '';
-      });
-
       // Initialize jsPDF document (A4 portrait)
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -308,47 +315,69 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
       
       // Create a temporary image to determine dimensions and scale ratio
       const tempImg = new window.Image();
-      tempImg.onload = () => {
-        const imgWidth = tempImg.width;
-        const imgHeight = tempImg.height;
-        
-        const ratio = contentWidth / imgWidth;
-        const finalImgHeight = imgHeight * ratio;
-        
-        // Multi-page slicing or simple fit scaling
-        if (finalImgHeight <= pdfHeight - (margin * 2)) {
-          pdf.addImage(dataUrl, 'PNG', margin, margin, contentWidth, finalImgHeight);
-        } else {
-          let heightLeft = finalImgHeight;
-          let position = margin;
-          
-          pdf.addImage(dataUrl, 'PNG', margin, position, contentWidth, finalImgHeight);
-          heightLeft -= (pdfHeight - (margin * 2));
-          
-          while (heightLeft > 0) {
-            pdf.addPage();
-            position = margin - (finalImgHeight - heightLeft);
-            pdf.addImage(dataUrl, 'PNG', margin, position, contentWidth, finalImgHeight);
-            heightLeft -= (pdfHeight - (margin * 2));
-          }
-        }
-        
-        // Prompt save of PDF
-        pdf.save(`تقرير-اتقان-${activeTab}-${new Date().toLocaleDateString('ar-SA')}.pdf`);
-        setIsExporting(false);
-      };
       
-      tempImg.src = dataUrl;
+      // Awaitable promise wrapping the image load & PDF construction to keep it synchronous in the try-catch block
+      await new Promise<void>((resolvePromise, rejectPromise) => {
+        tempImg.onload = () => {
+          try {
+            const imgWidth = tempImg.width;
+            const imgHeight = tempImg.height;
+            
+            const ratio = contentWidth / imgWidth;
+            const finalImgHeight = imgHeight * ratio;
+            
+            // Multi-page slicing or simple fit scaling
+            if (finalImgHeight <= pdfHeight - (margin * 2)) {
+              pdf.addImage(dataUrl, 'PNG', margin, margin, contentWidth, finalImgHeight);
+            } else {
+              let heightLeft = finalImgHeight;
+              let position = margin;
+              
+              pdf.addImage(dataUrl, 'PNG', margin, position, contentWidth, finalImgHeight);
+              heightLeft -= (pdfHeight - (margin * 2));
+              
+              while (heightLeft > 0) {
+                pdf.addPage();
+                position = margin - (finalImgHeight - heightLeft);
+                pdf.addImage(dataUrl, 'PNG', margin, position, contentWidth, finalImgHeight);
+                heightLeft -= (pdfHeight - (margin * 2));
+              }
+            }
+            
+            // Prompt save of PDF
+            pdf.save(`تقرير-اتقان-${activeTab}-${new Date().toLocaleDateString('ar-SA')}.pdf`);
+            resolvePromise();
+          } catch (err) {
+            rejectPromise(err);
+          }
+        };
+        
+        tempImg.onerror = () => {
+          rejectPromise(new Error('Failed to load temporary canvas export image'));
+        };
+        
+        tempImg.src = dataUrl;
+      });
       
     } catch (err) {
       console.error('PDF Export Error:', err);
       alert('حدث خطأ أثناء تصدير التقرير، يرجى المحاولة مرة أخرى: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      // ALWAYS restore hidden UI elements under all circumstances
+      hiddenElements.forEach((el) => {
+        el.style.display = '';
+      });
       setIsExporting(false);
     }
   };
 
   const calculateQuizAchievement = (quizId: string, students: Student[]) => {
-    let rawResults = data.quizResults?.filter(r => (quizId === '' || r.quizId === quizId) && students.some(s => s.id === r.studentId)) || [];
+    let rawResults = data.quizResults?.filter(r => 
+      !r.isArchived && 
+      activeQuizIds.has(r.quizId) && 
+      (quizId === '' || r.quizId === quizId) && 
+      students.some(s => s.id === r.studentId)
+    ) || [];
     
     // In teacher report mode, only include results for quizzes authored by or associated with this teacher
     if (filterTeacherId && quizId === '') {
@@ -372,7 +401,8 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
   };
 
   const getQuizStats = (quizId: string, students: Student[]) => {
-    let rawResults = data.quizResults?.filter(r => r.quizId === quizId && students.some(s => s.id === r.studentId)) || [];
+    if (!activeQuizIds.has(quizId)) return { avg: 0, count: 0, masteredPercentage: 0 };
+    let rawResults = data.quizResults?.filter(r => !r.isArchived && r.quizId === quizId && students.some(s => s.id === r.studentId)) || [];
     const latestResultsMap = new Map();
     rawResults.forEach(r => {
       const key = r.studentId;
@@ -399,43 +429,104 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
     return 'text-red-600 bg-red-50 border-red-100';
   };
 
-  // Skill Analytics calculations (from old version)
   const skillAnalytics = useMemo(() => {
-    const filteredStudents = data.students.filter(s => 
-      (selectedClassId === '' || s.classId === selectedClassId) && !s.isArchived
-    );
-
-    const masteryDistribution = (() => {
-      let mastered = 0, advanced = 0, accepted = 0, weak = 0, veryWeak = 0;
-      const nonAchieverIds = new Set<string>();
+    const filteredStudents = data.students.filter(s => {
+      if (s.isArchived) return false;
+      if (selectedClassId !== '' && s.classId !== selectedClassId) return false;
       
-      Object.entries(evaluations).forEach(([key, ev]) => {
-        if (!key.endsWith(`-${academicYear}`)) return;
-        const studentId = key.split('-')[0];
-        if (filteredStudents.some(s => s.id === studentId)) {
+      const cls = data.classes.find(c => c.id === s.classId);
+      if (selectedGradeId !== '' && cls?.gradeId !== selectedGradeId) return false;
+      
+      if (filterTeacherId && cls) {
+        const isDirect = teacherDirectClassIds.includes(cls.id) || cls.teacherIds?.includes(filterTeacherId);
+        const isSkillMatch = data.skills.some(sk => {
+           if (sk.gradeId !== cls.gradeId) return false;
+           const sub = data.subjects.find(s => s.id === sk.subjectId || s.name === sk.subjectName);
+           return sub && (sub.teacherId === filterTeacherId || sub.teacherIds?.includes(filterTeacherId));
+        });
+        if (!isDirect && !isSkillMatch) return false;
+      }
+      return true;
+    });
+
+    let mastered = 0, advanced = 0, accepted = 0, weak = 0, veryWeak = 0;
+    const nonAchieverIds = new Set<string>();
+    
+    const skillStats: Record<string, { mastered: number, advanced: number, accepted: number, weak: number, veryWeak: number, total: number, subjectName: string }> = {};
+
+    Object.entries(evaluations).forEach(([key, ev]) => {
+      if (!key.endsWith(`-${academicYear}`)) return;
+      const [studentId, skillId] = key.split('-');
+      
+      const student = filteredStudents.find(s => s.id === studentId);
+      if (student) {
+        const skill = data.skills.find(sk => sk.id === skillId);
+        if (skill) {
+          // If teacher filter is active, only include teacher's skills
+          if (filterTeacherId) {
+            const sub = data.subjects.find(s => s.id === skill.subjectId || s.name === skill.subjectName);
+            const isTeacherSkill = sub && (sub.teacherId === filterTeacherId || sub.teacherIds?.includes(filterTeacherId));
+            if (!isTeacherSkill) return;
+          }
+
           if (ev.score === 'mastered') mastered++;
           else if (ev.score === 'advanced') advanced++;
           else if (ev.score === 'accepted') accepted++;
           else if (ev.score === 'weak') { weak++; nonAchieverIds.add(studentId); }
           else if (ev.score === 'very-weak') { veryWeak++; nonAchieverIds.add(studentId); }
+
+          if (!skillStats[skill.id]) {
+            skillStats[skill.id] = { mastered: 0, advanced: 0, accepted: 0, weak: 0, veryWeak: 0, total: 0, subjectName: skill.subjectName || 'عام' };
+          }
+          skillStats[skill.id].total++;
+          if (ev.score === 'mastered') skillStats[skill.id].mastered++;
+          else if (ev.score === 'advanced') skillStats[skill.id].advanced++;
+          else if (ev.score === 'accepted') skillStats[skill.id].accepted++;
+          else if (ev.score === 'weak') skillStats[skill.id].weak++;
+          else if (ev.score === 'very-weak') skillStats[skill.id].veryWeak++;
         }
-      });
+      }
+    });
 
-      const nonAchievers = filteredStudents.filter(s => nonAchieverIds.has(s.id));
-      
+    const nonAchievers = filteredStudents.filter(s => nonAchieverIds.has(s.id));
+    
+    const distribution = [
+      { name: 'متقن', value: mastered, color: '#10b981' },
+      { name: 'متقدم', value: advanced, color: '#3b82f6' },
+      { name: 'مقبول', value: accepted, color: '#f59e0b' },
+      { name: 'ضعيف', value: weak, color: '#f97316' },
+      { name: 'غير مجتاز', value: veryWeak, color: '#ef4444' },
+    ];
+
+    const totalEvaluations = mastered + advanced + accepted + weak + veryWeak;
+    const overallMasteryPercentage = totalEvaluations > 0 ? Math.round(((mastered + advanced) / totalEvaluations) * 100) : 0;
+    
+    const skillsList = Object.entries(skillStats).map(([skillId, stats]) => {
+      const dbSkill = data.skills.find(sk => sk.id === skillId);
+      const masteryRate = stats.total > 0 ? Math.round(((stats.mastered + stats.advanced) / stats.total) * 100) : 0;
+      const weakRate = stats.total > 0 ? Math.round(((stats.weak + stats.veryWeak) / stats.total) * 100) : 0;
       return {
-        distribution: [
-          { name: 'متقن', value: mastered, color: '#10b981' },
-          { name: 'متقدم', value: advanced, color: '#3b82f6' },
-          { name: 'مقبول', value: accepted, color: '#f59e0b' },
-          { name: 'ضعيف', value: weak, color: '#f97316' },
-          { name: 'غير مجتاز', value: veryWeak, color: '#ef4444' },
-        ],
-        nonAchievers
+        id: skillId,
+        name: dbSkill?.name || 'مهارة غير معروفة',
+        subjectName: stats.subjectName,
+        masteryRate,
+        weakRate,
+        total: stats.total,
+        ...stats
       };
-    })();
+    }).sort((a, b) => b.total - a.total); // Sort by most evaluated by default
 
-    return { masteryDistribution };
+    const topSkills = [...skillsList].sort((a, b) => b.masteryRate - a.masteryRate).slice(0, 5);
+    const weakestSkills = [...skillsList].sort((a, b) => b.weakRate - a.weakRate).filter(s => s.weakRate > 0).slice(0, 5);
+
+    return { 
+      masteryDistribution: { distribution, nonAchievers },
+      totalEvaluations,
+      overallMasteryPercentage,
+      skillsList,
+      topSkills,
+      weakestSkills
+    };
   }, [data, evaluations, academicYear, selectedClassId]);
 
   const subjectPerformance = useMemo(() => {
@@ -524,116 +615,133 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
   }, [data]);
 
   return (
-    <div className="flex-1 p-4 lg:p-8 overflow-y-auto scrollbar-hide bg-slate-50/30" dir="rtl">
+    <div className="flex-1 p-6 lg:p-12 overflow-y-auto scrollbar-hide bg-slate-50/30" dir="rtl">
        <div className="max-w-[1700px] mx-auto space-y-8">
           
           {/* Header & Main Controls */}
-          <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-8 bg-white p-10 rounded-[32px] border border-slate-100 shadow-minimal">
-             <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                   {onClose && (
-                     <button 
-                       onClick={onClose}
-                       className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-indigo-600 hover:bg-indigo-50 transition-all group"
-                       title="العودة للوحة التحكم"
-                     >
-                       <ArrowRight size={24} className="group-hover:translate-x-1 transition-transform" />
-                     </button>
-                   )}
-                   <div className="w-12 h-12 rounded-[20px] bg-indigo-600 text-white flex items-center justify-center shadow-2xl shadow-indigo-200">
-                      <BarChart3 size={24} />
-                   </div>
-                   <h2 className="text-3xl font-black text-slate-900 tracking-tight">التقارير التحليلية والتحصيلية</h2>
-                </div>
-                <div className="flex items-center gap-2 mr-15">
-                     <p className="text-slate-400 font-bold text-sm italic">مراجعة شاملة لنتائج الاختبارات ومستويات إتقان المهارات</p>
-                     {filterTeacherId && (
-                        <span className="text-3xl font-black text-indigo-700 bg-indigo-50 px-8 py-3 rounded-2xl border-2 border-indigo-100 shadow-lg">المعلم: {data.teachers.find(t => t.id === filterTeacherId)?.name || 'غير معروف'}</span>
-                     )}
-                 </div>
-             </div>
-
-             <div className="flex flex-wrap items-center gap-4 w-full xl:w-auto">
-                <div className="flex bg-slate-100 p-1.5 rounded-2xl">
-                   <button 
-                     onClick={() => setActiveTab('quizzes')}
-                     className={`px-8 py-3 rounded-xl font-black text-xs transition-all flex items-center gap-2 ${activeTab === 'quizzes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                   >
-                      <BrainCircuit size={16} />
-                      نتائج الاختبارات
-                   </button>
-                   <button 
-                     onClick={() => setActiveTab('skills')}
-                     className={`px-8 py-3 rounded-xl font-black text-xs transition-all flex items-center gap-2 ${activeTab === 'skills' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                   >
-                      <Zap size={16} />
-                      إتقان المهارات
-                   </button>
-                   <button 
-                     onClick={() => setActiveTab('students')}
-                     className={`px-8 py-3 rounded-xl font-black text-xs transition-all flex items-center gap-2 ${activeTab === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                   >
-                      <Users size={16} />
-                      تقارير الطلاب
-                   </button>
-                </div>
-
-                <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden md:block" />
-
-                <div className="relative group flex-1 md:flex-none">
-                   <select 
-                     value={selectedGradeId}
-                     onChange={(e) => { setSelectedGradeId(e.target.value); setSelectedClassId(''); }}
-                     className="min-w-[180px] h-12 bg-slate-50 border-none rounded-2xl px-12 font-black text-slate-800 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-xs"
-                   >
-                      <option value="">جميع المراحل</option>
-                      {grades.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                   </select>
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-600 transition-colors">
-                      <GraduationCap size={16} />
-                   </div>
-                </div>
-
-                <div className="relative group flex-1 md:flex-none">
-                   <select 
-                     value={selectedClassId}
-                     onChange={(e) => setSelectedClassId(e.target.value)}
-                     className="min-w-[180px] h-12 bg-slate-50 border-none rounded-2xl px-12 font-black text-slate-800 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-xs"
-                   >
-                      <option value="">جميع الفصول</option>
-                      {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                   </select>
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-600 transition-colors">
-                      <Users size={16} />
-                   </div>
-                </div>
+          <div className="flex flex-col gap-3 mb-6 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+             <div className="flex flex-col xl:flex-row justify-between items-center gap-4">
                 
-                <button 
-                  onClick={handleExportPDF}
-                  disabled={isExporting}
-                  className={`h-12 px-6 bg-slate-900 text-white rounded-2xl flex items-center justify-center gap-2 hover:scale-105 transition-all shadow-xl shadow-slate-200 font-black text-xs ${isExporting ? 'opacity-50 cursor-wait' : ''}`}
-                >
-                   {isExporting ? (
-                     <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}>
-                       <TrendingUp size={18} />
-                     </motion.div>
-                   ) : <Download size={18} />}
-                   تصدير PDF
-                </button>
+                {/* Title & Navigation */}
+                <div className="flex items-center justify-between w-full xl:w-auto gap-4">
+                   <div className="flex items-center gap-3">
+                     {onClose && (
+                       <button 
+                         onClick={onClose}
+                         className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 hover:bg-indigo-50 transition-all group shrink-0"
+                         title="العودة للوحة التحكم"
+                       >
+                         <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                       </button>
+                     )}
+                     <div className="p-1.5 rounded-2xl bg-[#faf9f6]/95 border border-[#7a1c22]/10 shadow-sm shrink-0 flex items-center justify-center">
+                        <SchoolLogo size={55} showText={false} imageUrl={data.settings?.[0]?.schoolLogoUrl} />
+                     </div>
+                     <div className="flex flex-col">
+                       <h2 className="text-xl font-black text-slate-800 tracking-tighter whitespace-nowrap">التقارير التحليلية</h2>
+                       <p className="text-slate-500 font-semibold text-[10px] whitespace-nowrap">مراجعة لنتائج الاختبارات والمهارات</p>
+                     </div>
+                   </div>
+                   
+                   {/* Mobile PDF button */}
+                   <button 
+                     onClick={handleExportPDF}
+                     disabled={isExporting}
+                     className={`xl:hidden h-10 px-4 shrink-0 bg-slate-900 text-white rounded-xl flex items-center justify-center gap-1.5 hover:shadow-md transition-all font-black text-[11px] ${isExporting ? 'opacity-50 cursor-wait' : ''}`}
+                   >
+                      {isExporting ? <span className="animate-pulse">تصدير...</span> : <Download size={16} />}
+                   </button>
+                </div>
+
+                {/* Tabs, Class, Grade, and PDF Controls */}
+                <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 w-full xl:w-auto">
+                   
+                   <div data-export-hide="true" className="flex bg-slate-50 p-1 rounded-xl w-full sm:w-auto overflow-x-auto scrollbar-hide">
+                      <button 
+                        onClick={() => setActiveTab('quizzes')}
+                        className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all flex justify-center flex-1 sm:flex-none items-center gap-1.5 whitespace-nowrap ${activeTab === 'quizzes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                         <BrainCircuit size={14} />نتائج الاختبارات
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab('skills')}
+                        className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all flex justify-center flex-1 sm:flex-none items-center gap-1.5 whitespace-nowrap ${activeTab === 'skills' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                         <Zap size={14} />إتقان المهارات
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab('students')}
+                        className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all flex justify-center flex-1 sm:flex-none items-center gap-1.5 whitespace-nowrap ${activeTab === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                         <Users size={14} />تقارير الطلاب
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab('teachers')}
+                        className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all flex justify-center flex-1 sm:flex-none items-center gap-1.5 whitespace-nowrap ${activeTab === 'teachers' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                         <Award size={14} />تقارير المعلمين
+                      </button>
+                   </div>
+
+                   <div data-export-hide="true" className="h-6 w-[1px] bg-slate-200 mx-1 hidden lg:block shrink-0" />
+
+                   <div data-export-hide="true" className="flex gap-2 flex-grow sm:flex-none w-full sm:w-auto">
+                      {/* Teacher filter dropdown (Moved from Navbar) */}
+                      <div className="relative group w-1/3 sm:w-[130px] lg:w-auto shrink-0">
+                         <select 
+                           value={filterTeacherId || ''}
+                           onChange={(e) => onFilterTeacherChange && onFilterTeacherChange(e.target.value)}
+                           className="w-full lg:w-[130px] h-10 bg-slate-50 border border-slate-100 rounded-xl px-8 font-black text-slate-700 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-[11px]"
+                         >
+                            <option value="">جميع المعلمين</option>
+                            {data.teachers.filter(t => !t.isArchived).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                         </select>
+                         <User size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-600 transition-colors" />
+                      </div>
+
+                      <div className="relative group w-1/3 sm:w-[120px] lg:w-auto shrink-0">
+                         <select 
+                           value={selectedGradeId}
+                           onChange={(e) => { setSelectedGradeId(e.target.value); setSelectedClassId(''); }}
+                           className="w-full lg:w-[120px] h-10 bg-slate-50 border border-slate-100 rounded-xl px-8 font-black text-slate-700 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-[11px]"
+                         >
+                            <option value="">جميع المراحل</option>
+                            {grades.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                         </select>
+                         <GraduationCap size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-600 transition-colors" />
+                      </div>
+                      
+                      <div className="relative group w-1/3 sm:w-[120px] lg:w-auto shrink-0">
+                         <select 
+                           value={selectedClassId}
+                           onChange={(e) => setSelectedClassId(e.target.value)}
+                           className="w-full lg:w-[120px] h-10 bg-slate-50 border border-slate-100 rounded-xl px-8 font-black text-slate-700 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-[11px]"
+                         >
+                            <option value="">جميع الفصول</option>
+                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                         </select>
+                         <Users size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-600 transition-colors" />
+                      </div>
+                   </div>
+                   
+                   <button 
+                     onClick={handleExportPDF}
+                     disabled={isExporting}
+                     className={`hidden xl:flex h-10 px-4 shrink-0 bg-slate-900 text-white rounded-xl items-center justify-center gap-1.5 hover:shadow-md transition-all font-black text-[11px] ${isExporting ? 'opacity-50 cursor-wait' : ''}`}
+                   >
+                      {isExporting ? <span className="animate-pulse">تصدير...</span> : <><Download size={14} />تصدير</>}
+                   </button>
+                </div>
              </div>
           </div>
 
-          <div ref={reportRef} className="space-y-8 p-10 bg-white rounded-[32px]">
+          <div ref={reportRef} className="space-y-8 p-10 bg-white rounded-3xl">
              {/* Report Export Header */}
                   <div className="hidden pb-10 border-b border-slate-100 mb-10 flex-col gap-2 print:flex" style={{ display: isExporting ? 'flex' : 'none' }}>
                      <div className="flex justify-between items-start">
                         <div className="flex items-center gap-4">
-                           <div className={`w-16 h-16 ${data.settings?.[0]?.schoolLogoUrl ? '' : 'bg-indigo-600 text-white'} rounded-2xl flex items-center justify-center shadow-lg overflow-hidden`}>
-                              {data.settings?.[0]?.schoolLogoUrl ? (
-                                <img src={data.settings?.[0]?.schoolLogoUrl} alt="School Logo" className="w-full h-full object-cover" />
-                              ) : (
-                                <BarChart3 size={32} />
-                              )}
+                           <div className="w-16 h-16 bg-transparent flex items-center justify-center overflow-hidden shrink-0">
+                               <SchoolLogo size={65} showText={false} imageUrl={data.settings?.[0]?.schoolLogoUrl} />
                            </div>
                            <div>
                               <h1 className="text-4xl font-black text-slate-900 tracking-tight">تقرير منصة إتقان</h1>
@@ -642,11 +750,11 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                         </div>
                         <div className="text-left font-black text-slate-800">
                            <p className="text-xl">{new Date().toLocaleDateString('ar-SA')}</p>
-                           <p className="text-indigo-600">العام الدراسي: {academicYear}</p>
+                           <p className="text-indigo-600">العام الدراسي: {displayYear}</p>
                         </div>
                      </div>
                      {filterTeacherId && (
-                        <div className="mt-8 p-6 bg-indigo-50 rounded-[28px] border-2 border-indigo-100 w-fit">
+                        <div className="mt-8 p-6 bg-indigo-50 rounded-2xl border-2 border-indigo-100 w-fit">
                            <p className="text-3xl font-black text-indigo-700">المعلم: {data.teachers.find(t => t.id === filterTeacherId)?.name}</p>
                         </div>
                      )}
@@ -666,18 +774,18 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                        {/* High Level Stats */}
                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                           <StatCard label="إجمالي الاختبارات" value={data.quizzes.filter(q => !q.isArchived).length} icon={<BrainCircuit className="text-indigo-600" />} color="bg-indigo-50" />
-                          <StatCard label="عمليات الرصد" value={data.quizResults?.length || 0} icon={<CheckCircle2 className="text-green-600" />} color="bg-green-50" />
+                          <StatCard label="عمليات الرصد" value={data.quizResults?.filter(r => !r.isArchived && activeQuizIds.has(r.quizId)).length || 0} icon={<CheckCircle2 className="text-green-600" />} color="bg-green-50" />
                           <StatCard label="متوسط الإنجاز العام" value={`${calculateQuizAchievement('', data.students.filter(s => !s.isArchived))}%`} icon={<Trophy className="text-yellow-600" />} color="bg-yellow-50" />
                           <StatCard label="فصول نشطة" value={data.classes.filter(c => !c.isArchived).length} icon={<Users className="text-blue-600" />} color="bg-blue-50" />
                        </div>
 
                          {/* Professional Charts Row */}
                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-minimal relative overflow-hidden">
+                            <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-minimal relative overflow-hidden">
                                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/40 blur-[100px] rounded-full -translate-x-32 -translate-y-32" />
                                <div className="relative z-10">
                                   <div className="flex justify-between items-center mb-10">
-                                     <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+                                     <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800 flex items-center gap-3">
                                         <TrendingUp size={24} className="text-indigo-600" />
                                         تحليل الكفاءة والمقارنة المعيارية
                                      </h3>
@@ -691,14 +799,14 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                            achievement: calculateQuizAchievement('', data.students.filter(s => s.classId === c.id && !s.isArchived))
                                         }))}>
                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 900 }} dy={10} />
-                                           <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 900 }} />
+                                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} dy={10} />
+                                           <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />
                                            <Tooltip 
                                              cursor={{ fill: '#4f46e5', fillOpacity: 0.05, radius: 10 }}
                                              content={({ active, payload }) => {
                                                 if (active && payload && payload.length) {
                                                    return (
-                                                      <div className="bg-slate-900 text-white p-4 rounded-[20px] shadow-2xl border border-slate-800">
+                                                      <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-800">
                                                          <p className="font-black text-[10px] mb-2 opacity-60 uppercase tracking-widest">{payload[0].payload.fullName}</p>
                                                          <div className="flex items-center gap-2">
                                                             <div className="w-2 h-8 bg-indigo-500 rounded-full" />
@@ -712,7 +820,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                              }}
                                            />
                                            <Bar dataKey="achievement" radius={[12, 12, 4, 4]} barSize={28}>
-                                               <LabelList dataKey="achievement" position="top" fill="#1e293b" style={{ fontSize: '12px', fontWeight: '900' }} formatter={(v: any) => `${v}%`} />
+                                               <LabelList dataKey="achievement" position="top" fill="#64748b" style={{ fontSize: '12px', fontWeight: '900' }} formatter={(v: any) => `${v}%`} />
                                               {classes.slice(0, 8).map((c, index) => (
                                                 <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#4f46e5' : '#818cf8'} />
                                               ))}
@@ -723,11 +831,11 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                </div>
                             </div>
 
-                            <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-minimal relative overflow-hidden">
+                            <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-minimal relative overflow-hidden">
                                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-50/40 blur-[100px] rounded-full -translate-x-32 -translate-y-32" />
                                <div className="relative z-10">
                                   <div className="flex justify-between items-center mb-10">
-                                     <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+                                     <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800 flex items-center gap-3">
                                         <PieChartIcon size={24} className="text-blue-600" />
                                         توزيع التحصيل لكل مادة دراسية
                                      </h3>
@@ -742,7 +850,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                              type="category" 
                                              axisLine={false} 
                                              tickLine={false} 
-                                             tick={{ fill: '#1e293b', fontSize: 11, fontWeight: 900 }} 
+                                             tick={{ fill: '#1e293b', fontSize: 11, fontWeight: 700 }} 
                                              width={100}
                                            />
                                            <Tooltip 
@@ -750,7 +858,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                              content={({ active, payload }) => {
                                                 if (active && payload && payload.length) {
                                                    return (
-                                                      <div className="bg-slate-900 text-white p-4 rounded-[20px] shadow-2xl border border-slate-800">
+                                                      <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-800">
                                                          <p className="font-black text-xs mb-2 opacity-60 uppercase tracking-widest">{payload[0].payload.name}</p>
                                                          <div className="flex items-center gap-2">
                                                             <div className="w-2 h-8 bg-blue-500 rounded-full" />
@@ -763,7 +871,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                              }}
                                            />
                                            <Bar dataKey="achievement" radius={[0, 10, 10, 0]} barSize={24}>
-                                               <LabelList dataKey="achievement" position="right" fill="#1e293b" style={{ fontSize: '12px', fontWeight: '900' }} formatter={(v: any) => `${v}%`} />
+                                               <LabelList dataKey="achievement" position="right" fill="#64748b" style={{ fontSize: '12px', fontWeight: '900' }} formatter={(v: any) => `${v}%`} />
                                               {subjectPerformance.slice(0, 6).map((s, index) => (
                                                 <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#60a5fa'} />
                                               ))}
@@ -776,15 +884,15 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                          </div>
 
                          {/* Analytics Row 3: Grade & Stage Performance Contrast */}
-                         <div className="bg-white p-12 rounded-[56px] border border-slate-100 shadow-minimal relative overflow-hidden">
+                         <div className="bg-white p-12 rounded-3xl border border-slate-100 shadow-minimal relative overflow-hidden">
                             <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-50/30 blur-[120px] -translate-x-32 translate-y-32" />
                             <div className="relative z-10 flex flex-col lg:flex-row gap-12 items-start">
                                <div className="lg:w-1/3 space-y-6">
-                                  <div className="w-16 h-16 bg-slate-900 rounded-[28px] flex items-center justify-center text-white shadow-2xl shadow-slate-200">
+                                  <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-slate-200">
                                      <LayoutGrid size={32} />
                                   </div>
                                   <div className="space-y-2">
-                                     <h3 className="text-3xl font-black text-slate-900 tracking-tight">مؤشرات المراحل والصفوف</h3>
+                                     <h3 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tighter">مؤشرات المراحل والصفوف</h3>
                                      <p className="text-slate-400 font-bold leading-relaxed">تحليل الكفاءة النوعية لمخرجات التعليم على مستوى المرحلة والمستوى الدراسي العام.</p>
                                   </div>
                                   
@@ -820,7 +928,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                   <ResponsiveContainer width="100%" height="100%">
                                      <BarChart data={gradePerformance} barSize={40}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 900 }} />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} />
                                         <YAxis domain={[0, 100]} hide />
                                         <Tooltip 
                                            content={({ active, payload }) => {
@@ -835,7 +943,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                            }}
                                         />
                                         <Bar dataKey="achievement" radius={[10, 10, 0, 0]} fill="#4f46e5">
-                                           <LabelList dataKey="achievement" position="top" fill="#1e293b" style={{ fontSize: '12px', fontWeight: '900' }} formatter={(v: any) => `${v}%`} />
+                                           <LabelList dataKey="achievement" position="top" fill="#64748b" style={{ fontSize: '12px', fontWeight: '900' }} formatter={(v: any) => `${v}%`} />
                                            {gradePerformance.map((entry, index) => (
                                               <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#4f46e5' : '#818cf8'} />
                                            ))}
@@ -884,14 +992,14 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                            </div>
                         </div>
 
-                         <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-minimal">
+                         <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-minimal">
                             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-10 border-b border-slate-100 pb-8">
                                <div>
-                                  <h3 className="text-2xl font-black text-slate-800 italic">سجل الاختبارات الفترية</h3>
+                                  <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800 italic">سجل الاختبارات الفترية</h3>
                                   <p className="text-xs text-slate-400 font-bold mt-1">تتبع النتائج وتحصيل الطلاب لكل اختبار تم رصده</p>
                                </div>
                                
-                               <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full lg:w-auto">
+                               <div data-export-hide="true" className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full lg:w-auto">
                                   {/* Quiz Grade Filter */}
                                   <div className="relative flex items-center bg-slate-50 border border-slate-200/80 rounded-2xl px-3.5 py-2 h-12 hover:border-indigo-300 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-50 transition-all flex-1 sm:flex-none">
                                      <GraduationCap size={16} className="text-indigo-500 ml-2 shrink-0 animate-pulse" />
@@ -955,7 +1063,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
 
                                   if (filteredList.length === 0) {
                                      return (
-                                        <div className="py-20 text-center space-y-4 bg-slate-50/50 rounded-[24px] border border-dashed border-slate-200">
+                                        <div className="py-20 text-center space-y-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mx-auto shadow-sm">
                                               <XCircle size={28} />
                                            </div>
@@ -1050,7 +1158,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                            العودة للإحصائيات العامة
                         </button>
 
-                        <div className="bg-white p-12 rounded-[56px] border border-slate-100 shadow-minimal relative overflow-hidden">
+                        <div className="bg-white p-12 rounded-3xl border border-slate-100 shadow-minimal relative overflow-hidden">
                            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-50/70 blur-[120px] rounded-full -translate-x-48 -translate-y-48" />
                            
                            <div className="relative z-10 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-10 mb-16 px-4">
@@ -1074,21 +1182,21 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                               </div>
                               
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full xl:w-auto">
-                                       <div className="p-6 bg-slate-900 border border-slate-800 rounded-[32px] text-center flex-1 md:min-w-[160px] shadow-lg">
+                                       <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl text-center flex-1 md:min-w-[160px] shadow-lg">
                                           <p className="text-[10px] font-black text-indigo-300 uppercase tracking-wider mb-2">مؤشر التحصيل للفصل (الشامل)</p>
                                           <p className="text-3xl font-black text-yellow-400 leading-none">
                                              {calculatePerformance ? calculatePerformance(selectedClassId) : calculateQuizAchievement('', classStudents)}%
                                           </p>
                                           <p className="text-[10px] text-slate-400 font-bold mt-2">الأداء العام للمهارات والاختبارات</p>
                                        </div>
-                                       <div className="p-6 bg-slate-50 border border-slate-100 rounded-[32px] text-center flex-1 md:min-w-[160px] hover:border-indigo-100 transition-colors">
+                                       <div className="p-6 bg-slate-50 border border-slate-100 rounded-3xl text-center flex-1 md:min-w-[160px] hover:border-indigo-100 transition-colors">
                                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">متوسط الاختبارات الفترية</p>
                                           <p className="text-3xl font-black text-indigo-600 leading-none">
                                              {calculateQuizAchievement('', classStudents)}%
                                           </p>
                                           <p className="text-[10px] text-slate-400 font-bold mt-2">بناءً على الرصد الآلي</p>
                                        </div>
-                                       <div className="p-6 bg-slate-50 border border-slate-100 rounded-[32px] text-center flex-1 md:min-w-[160px] hover:border-indigo-100 transition-colors">
+                                       <div className="p-6 bg-slate-50 border border-slate-100 rounded-3xl text-center flex-1 md:min-w-[160px] hover:border-indigo-100 transition-colors">
                                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">متوسط إتقان المهارات</p>
                                           <p className="text-3xl font-black text-emerald-600 leading-none">
                                              {(() => {
@@ -1142,7 +1250,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                      </thead>
                                     <tbody>
                                        {classStudents.map(student => {
-                                          let rawResults = data.quizResults?.filter(r => r.studentId === student.id) || [];
+                                          let rawResults = data.quizResults?.filter(r => !r.isArchived && activeQuizIds.has(r.quizId) && r.studentId === student.id) || [];
                                           if (filterTeacherId) {
                                              rawResults = rawResults.filter(r => classQuizzes.some(q => q.id === r.quizId));
                                           }
@@ -1222,142 +1330,196 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+                  className="space-y-8"
                 >
-                   {/* Skill Mastery Overview */}
-                   <div className="lg:col-span-2 bg-white p-10 rounded-[32px] border border-slate-100 shadow-minimal space-y-10">
-                      <div className="flex justify-between items-center">
+                   {/* Top Overview Cards */}
+                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-minimal flex items-center gap-4">
+                         <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                            <Zap size={24} />
+                         </div>
                          <div>
-                            <h3 className="text-3xl font-black text-slate-900 tracking-tight">تحليل استيعاب المهارات</h3>
-                            <p className="text-slate-400 font-bold text-sm mt-1">توزيع مستويات الإتقان لكل المهارات المرصودة</p>
-                         </div>
-                         <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400">
-                            <LayoutGrid size={24} />
+                            <p className="text-[10px] font-black text-slate-400 uppercase">إجمالي التقييمات المهارية</p>
+                            <p className="text-3xl font-black text-slate-800">{skillAnalytics.totalEvaluations}</p>
                          </div>
                       </div>
 
-                      <div className="h-[450px] w-full">
-                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart 
-                              data={skillAnalytics.masteryDistribution.distribution} 
-                              margin={{ top: 20, right: 30, left: 30, bottom: 20 }}
-                            >
-                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 13, fontWeight: 900 }} dy={10} />
-                               <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 800 }} />
-                               <Tooltip 
-                                 cursor={{ fill: '#f8fafc', radius: 12 }}
-                                 content={({ active, payload }) => {
-                                    if (active && payload && payload.length) {
-                                       const data = payload[0].payload;
-                                       return (
-                                          <div className="bg-slate-900 text-white p-6 rounded-[24px] shadow-2xl border border-slate-800 min-w-[160px]">
-                                             <p className="text-[10px] font-black opacity-50 uppercase tracking-[0.2em] mb-2">{data.name}</p>
-                                             <div className="flex items-center justify-between gap-6">
-                                                <p className="text-4xl font-black">{data.value}</p>
-                                                <p className="text-sm opacity-60">تقييم مبني</p>
-                                             </div>
-                                          </div>
-                                       );
-                                    }
-                                    return null;
-                                 }}
-                               />
-                               <Bar dataKey="value" radius={[16, 16, 6, 6]} barSize={50}>
-                                        <LabelList dataKey="value" position="top" offset={10} fill="#1e293b" style={{ fontSize: '12px', fontWeight: 'black' }} />
-                                  {skillAnalytics.masteryDistribution.distribution.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                  ))}
-                               </Bar>
-                            </BarChart>
-                         </ResponsiveContainer>
+                      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-minimal flex items-center gap-4">
+                         <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+                            <Target size={24} />
+                         </div>
+                         <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase">معدل الإتقان العام</p>
+                            <p className="text-3xl font-black text-slate-800">{skillAnalytics.overallMasteryPercentage}%</p>
+                         </div>
                       </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-6 mt-10 border-t border-slate-50">
-                         {skillAnalytics.masteryDistribution.distribution.map((item, i) => (
-                            <div key={i} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 flex flex-col items-center text-center">
-                               <div className="w-2.5 h-2.5 rounded-full mb-2" style={{ backgroundColor: item.color }} />
-                               <span className="text-[10px] font-black text-slate-400 block mb-1">{item.name}</span>
-                               <span className="text-lg font-black text-slate-800">{item.value}</span>
-                            </div>
-                         ))}
+                      
+                      <div className="md:col-span-2 bg-gradient-to-l from-slate-900 to-slate-800 p-6 rounded-2xl shadow-lg flex items-center justify-between text-white relative overflow-hidden">
+                         <div className="absolute top-0 right-0 -m-8 w-32 h-32 bg-indigo-500 rounded-full mix-blend-multiply opacity-20 blur-2xl"></div>
+                         <div className="relative z-10">
+                            <h4 className="font-black text-xl mb-1">تحليل مفصل للمهارات</h4>
+                            <p className="text-xs text-slate-300 font-bold opacity-80 max-w-[250px]">متابعة دقيقة لمستويات استيعاب الطلاب للمهارات المحددة في المقررات الدراسية</p>
+                         </div>
+                         <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md relative z-10 border border-white/20">
+                            <Award size={32} className="text-indigo-300" />
+                         </div>
                       </div>
                    </div>
 
-                   {/* Non-Achievers List */}
-                   <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-minimal space-y-6">
-                      <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                         <AlertCircle size={20} className="text-red-500" />
-                         طلاب بحاجة لدعم (لم يجتازوا)
-                      </h3>
-                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
-                         {skillAnalytics.masteryDistribution.nonAchievers.length > 0 ? (
-                            skillAnalytics.masteryDistribution.nonAchievers.map(student => (
-                               <div key={student.id} className="flex items-center gap-3 p-4 bg-red-50/50 border border-red-50 rounded-2xl">
-                                  <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-black text-xs">
-                                     {student.name.charAt(0)}
-                                  </div>
-                                  <span className="font-black text-slate-800 text-sm">{student.name}</span>
+                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      {/* Distribution & Top/Weakest Skills */}
+                      <div className="lg:col-span-2 space-y-8">
+                         <div className="bg-white p-8 md:p-10 rounded-3xl border border-slate-100 shadow-minimal space-y-8">
+                            <div className="flex justify-between items-center">
+                               <div>
+                                  <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800">توزيع مستويات الإتقان</h3>
+                                  <p className="text-slate-400 font-bold text-xs mt-1">المستويات التصنيفية لاستيعاب الطلاب</p>
                                </div>
-                            ))
-                         ) : (
-                            <p className="text-sm font-bold text-slate-400 text-center py-6">لا يوجد طلاب بحاجة لدعم حالياً</p>
-                         )}
-                      </div>
-                   </div>
-
-                   {/* Summary Pie & Stats */}
-                   <div className="space-y-8">
-                      <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-minimal space-y-10">
-                         <h3 className="text-2xl font-black text-slate-800 text-center">نظرة شمولية</h3>
-                         <div className="h-[300px] relative">
-                            <ResponsiveContainer width="100%" height="100%">
-                               <PieChart>
-                                  <Pie
-                                    data={skillAnalytics.masteryDistribution.distribution}
-                                    innerRadius={80}
-                                    outerRadius={115}
-                                    paddingAngle={8}
-                                    dataKey="value"
-                                    stroke="none"
-                                  >
-                                     {skillAnalytics.masteryDistribution.distribution.map((entry, index) => (
-                                       <Cell key={`cell-${index}`} fill={entry.color} />
-                                     ))}
-                                  </Pie>
-                                  <Tooltip />
-                               </PieChart>
-                            </ResponsiveContainer>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                               <Target className="text-indigo-600 mb-2" size={32} />
-                               <span className="text-[10px] font-black text-slate-400 uppercase">مؤشر الإتقان</span>
-                               <span className="text-3xl font-black text-slate-900">
-                                  {(() => {
-                                     const dist = skillAnalytics.masteryDistribution.distribution;
-                                     const total = dist.reduce((a, b) => a + b.value, 0);
-                                     if (total === 0) return 0;
-                                     const positive = (dist[0].value + dist[1].value);
-                                     return Math.round((positive / total) * 100);
-                                  })()}%
-                               </span>
+                               <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center">
+                                  <BarChart3 size={20} />
+                               </div>
+                            </div>
+                            <div className="h-[280px] w-full">
+                               <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={skillAnalytics.masteryDistribution.distribution} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
+                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 800 }} dy={10} />
+                                     <YAxis hide />
+                                     <Tooltip 
+                                        cursor={{ fill: '#f8fafc', radius: 12 }}
+                                        content={({ active, payload }) => {
+                                           if (active && payload && payload.length) {
+                                              const data = payload[0].payload;
+                                              return (
+                                                 <div className="bg-slate-800 text-white p-4 rounded-2xl shadow-xl text-center min-w-[120px]">
+                                                    <p className="text-[10px] font-bold opacity-60 mb-1">{data.name}</p>
+                                                    <p className="text-xl md:text-2xl font-black tracking-tighter">{data.value}</p>
+                                                 </div>
+                                              );
+                                           }
+                                           return null;
+                                        }}
+                                     />
+                                     <Bar dataKey="value" radius={[12, 12, 4, 4]}>
+                                        <LabelList dataKey="value" position="top" fill="#475569" style={{ fontSize: '12px', fontWeight: 'bold' }} />
+                                        {skillAnalytics.masteryDistribution.distribution.map((entry, index) => (
+                                           <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                     </Bar>
+                                  </BarChart>
+                               </ResponsiveContainer>
                             </div>
                          </div>
-                         <div className="p-8 bg-slate-900 rounded-[32px] text-white">
-                            <div className="flex items-center gap-4 mb-6">
-                               <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+
+                         {/* Skills List Details */}
+                         <div className="bg-white p-8 md:p-10 rounded-3xl border border-slate-100 shadow-minimal space-y-6">
+                            <div className="flex justify-between items-center">
+                               <h3 className="text-xl font-black text-slate-800">تفاصيل أداء المهارات</h3>
+                            </div>
+                            <div className="overflow-x-auto">
+                               <table className="w-full text-right" dir="rtl">
+                                  <thead>
+                                     <tr className="border-b border-slate-100 text-slate-400 font-bold text-[10px]">
+                                        <th className="py-3 px-2">اسم المهارة</th>
+                                        <th className="py-3 px-2">المادة</th>
+                                        <th className="py-3 px-2 text-center">التقييمات</th>
+                                        <th className="py-3 px-2 text-center">إتقان</th>
+                                        <th className="py-3 px-2 text-center">ضعف</th>
+                                     </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-50">
+                                     {skillAnalytics.skillsList.length === 0 ? (
+                                        <tr><td colSpan={5} className="py-12"><div className="flex flex-col items-center justify-center text-center"><div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4"><Zap size={32} className="text-slate-300" /></div><h4 className="text-sm font-black text-slate-700 mb-1">لا توجد بيانات للتقييم</h4><p className="text-xs text-slate-400 max-w-xs">سيتم تحديث القائمة بعد رصد المعلمين لتقييم المهارات</p></div></td></tr>
+                                     ) : skillAnalytics.skillsList.map((skill) => (
+                                        <tr key={skill.id} className="hover:bg-slate-50/50 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-300 cursor-pointer">
+                                           <td className="py-4 px-2 font-black text-slate-800 max-w-[200px] text-xs leading-relaxed">{skill.name}</td>
+                                           <td className="py-4 px-2 text-[10px] font-bold text-indigo-600"><span className="bg-indigo-50 px-2 py-1 rounded-md whitespace-nowrap">{skill.subjectName}</span></td>
+                                           <td className="py-4 px-2 text-center font-bold text-slate-500 text-xs">{skill.total}</td>
+                                           <td className="py-4 px-2 text-center">
+                                              <span className={`inline-block px-2 py-1 rounded-lg text-[10px] font-black ${skill.masteryRate >= 80 ? 'bg-emerald-50 text-emerald-700' : skill.masteryRate >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                                                 {skill.masteryRate}%
+                                              </span>
+                                           </td>
+                                           <td className="py-4 px-2 text-center">
+                                              <span className={`inline-block px-2 py-1 rounded-lg text-[10px] font-black ${skill.weakRate >= 50 ? 'bg-red-50 text-red-700' : skill.weakRate >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                                 {skill.weakRate}%
+                                              </span>
+                                           </td>
+                                        </tr>
+                                     ))}
+                                  </tbody>
+                               </table>
+                            </div>
+                         </div>
+                      </div>
+
+                      {/* Right Sidebar: Weakest, Strongest, Needs Support */}
+                      <div className="space-y-8">
+                         {/* Weakest Skills */}
+                         <div className="bg-white p-8 rounded-3xl border border-rose-100 shadow-minimal space-y-6">
+                            <div className="flex items-center gap-3">
+                               <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center">
+                                  <AlertCircle size={20} />
+                               </div>
+                               <h4 className="font-black text-lg text-slate-800">تحتاج لتدخل علاجي</h4>
+                            </div>
+                            <div className="space-y-4">
+                               {skillAnalytics.weakestSkills.length > 0 ? skillAnalytics.weakestSkills.map(skill => (
+                                  <div key={skill.id} className="p-4 bg-rose-50/50 rounded-2xl border border-rose-100/50">
+                                     <p className="font-black text-slate-800 text-xs leading-relaxed mb-2">{skill.name}</p>
+                                     <div className="flex justify-between items-center text-[10px] font-bold">
+                                        <span className="text-slate-500">{skill.subjectName}</span>
+                                        <span className="text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md">نسبة الضعف: {skill.weakRate}%</span>
+                                     </div>
+                                  </div>
+                               )) : (
+                                  <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 rounded-2xl"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><AlertCircle size={24} className="text-slate-300" /></div><p className="text-xs font-bold text-slate-500">المهارات مقيمة بمستويات جيدة</p></div>
+                               )}
+                            </div>
+                         </div>
+
+                         {/* Top Skills */}
+                         <div className="bg-white p-8 rounded-3xl border border-emerald-100 shadow-minimal space-y-6">
+                            <div className="flex items-center gap-3">
+                               <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
                                   <Trophy size={20} />
                                </div>
-                               <h4 className="font-black">الإنجاز الكلي للمهارات</h4>
+                               <h4 className="font-black text-lg text-slate-800">الأكثر إتقاناً</h4>
                             </div>
-                            <p className="text-xs text-slate-400 font-bold mb-4 italic leading-relaxed">
-                               تم رصد {skillAnalytics.masteryDistribution.distribution.reduce((a, b) => a + b.value, 0)} تقييماً مهارياً مختلفاً خلال العام الدراسي الحالي.
-                            </p>
-                            <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
-                               <div>
-                                  <p className="text-[9px] font-black uppercase opacity-60 mb-0.5">العام الدراسي</p>
-                                  <p className="font-black text-indigo-400">{academicYear}</p>
+                            <div className="space-y-4">
+                               {skillAnalytics.topSkills.length > 0 ? skillAnalytics.topSkills.map(skill => (
+                                  <div key={skill.id} className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100/50">
+                                     <p className="font-black text-slate-800 text-xs leading-relaxed mb-2">{skill.name}</p>
+                                     <div className="flex justify-between items-center text-[10px] font-bold">
+                                        <span className="text-slate-500">{skill.subjectName}</span>
+                                        <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">إتقان: {skill.masteryRate}%</span>
+                                     </div>
+                                  </div>
+                               )) : (
+                                  <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 rounded-2xl"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><Trophy size={24} className="text-slate-300" /></div><p className="text-xs font-bold text-slate-500">لم يتم تقييم مستوى الإتقان</p></div>
+                               )}
+                            </div>
+                         </div>
+
+                         {/* Non Achievers */}
+                         <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-minimal space-y-6">
+                            <div className="flex items-center gap-3">
+                               <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
+                                  <Users size={20} />
                                </div>
-                               <Calendar size={24} className="text-slate-700" />
+                               <h4 className="font-black text-lg text-slate-800">طلاب بحاجة لدعم</h4>
+                            </div>
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                               {skillAnalytics.masteryDistribution.nonAchievers.length > 0 ? skillAnalytics.masteryDistribution.nonAchievers.map(student => (
+                                  <div key={student.id} className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100 rounded-xl">
+                                     <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">
+                                        {student.name.charAt(0)}
+                                     </div>
+                                     <span className="font-black text-slate-700 text-xs">{student.name}</span>
+                                  </div>
+                               )) : (
+                                  <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 rounded-2xl"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><Users size={24} className="text-slate-300" /></div><p className="text-xs font-bold text-slate-500">لا يوجد طلاب بحاجة لمتابعة</p></div>
+                               )}
                             </div>
                          </div>
                       </div>
@@ -1375,7 +1537,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                    {!selectedReportStudentId ? (
                       <div className="space-y-6">
                          {/* Search and Guidance */}
-                         <div className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-white p-6 rounded-[24px] border border-slate-100 shadow-minimal font-sans">
+                         <div data-export-hide="true" className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-white p-6 rounded-2xl border border-slate-100 shadow-minimal font-sans">
                             <div className="text-right w-full lg:w-auto font-sans">
                                <h3 className="text-xl font-black text-slate-800">سجل تقارير الطلاب</h3>
                                <p className="text-slate-400 text-xs font-bold mt-1">اختر طالباً لاستعراض وتحميل بطاقة التقرير التحصيلي الشامل</p>
@@ -1421,7 +1583,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
 
                          {/* Grid List */}
                          {filteredStudents.length === 0 ? (
-                            <div className="bg-white p-12 text-center rounded-[32px] border border-slate-100 shadow-minimal flex flex-col items-center justify-center font-sans">
+                            <div className="bg-white p-12 text-center rounded-3xl border border-slate-100 shadow-minimal flex flex-col items-center justify-center font-sans">
                                <Users size={48} className="text-slate-300 mb-4" />
                                <p className="text-slate-400 font-black text-sm">لا يوجد طلاب يطابقون خيارات البحث أو التصفية الحالية</p>
                                <p className="text-slate-350 text-xs mt-1">يرجى التأكد من اختيار الفصل أو تعديل كلمة البحث</p>
@@ -1431,7 +1593,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                {filteredStudents.map(student => {
                                   const cls = data.classes.find(c => c.id === student.classId);
                                   const grd = data.grades.find(g => g.id === cls?.gradeId);
-                                  const stResults = data.quizResults.filter(r => r.studentId === student.id && !r.isArchived);
+                                  const stResults = data.quizResults.filter(r => r.studentId === student.id && !r.isArchived && activeQuizIds.has(r.quizId));
                                   const stAvg = stResults.length > 0 
                                      ? Math.round(stResults.reduce((sum, r) => sum + r.score, 0) / stResults.length)
                                      : 0;
@@ -1440,7 +1602,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                   return (
                                      <div 
                                         key={student.id}
-                                        className="bg-white rounded-[24px] border border-slate-100 p-5 shadow-minimal hover:border-indigo-100 hover:scale-[1.01] transition-all group duration-300 flex flex-col justify-between text-right"
+                                        className="bg-white rounded-2xl border border-slate-100 p-5 shadow-minimal hover:border-indigo-100 hover:scale-[1.01] transition-all group duration-300 flex flex-col justify-between text-right"
                                      >
                                         <div className="flex flex-row-reverse items-start gap-4 mb-4">
                                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100/30 flex items-center justify-center font-black text-sm shrink-0 font-sans">
@@ -1497,7 +1659,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                          const cls = data.classes.find(c => c.id === student.classId);
                          const grd = data.grades.find(g => g.id === cls?.gradeId);
                          
-                         const stQuizResults = data.quizResults.filter(r => r.studentId === student.id && !r.isArchived);
+                         const stQuizResults = data.quizResults.filter(r => r.studentId === student.id && !r.isArchived && activeQuizIds.has(r.quizId));
                          const stQuizAvg = stQuizResults.length > 0
                             ? Math.round(stQuizResults.reduce((acc, curr) => acc + curr.score, 0) / stQuizResults.length)
                             : 0;
@@ -1557,7 +1719,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                          return (
                             <div className="space-y-8 animate-fadeIn text-right font-sans" dir="rtl">
                                {/* Actions Top Header */}
-                               <div className="flex flex-row bg-white p-4 px-6 rounded-2xl border border-slate-100 shadow-minimal print:hidden justify-between items-center">
+                               <div data-export-hide="true" className="flex flex-row bg-white p-4 px-6 rounded-2xl border border-slate-100 shadow-minimal print:hidden justify-between items-center">
                                   <button 
                                      onClick={() => setSelectedReportStudentId('')}
                                      className="flex items-center gap-2 text-xs font-black text-slate-600 hover:text-slate-950 flex-row hover:bg-slate-50 cursor-pointer px-3 py-1.5 rounded-xl transition-colors font-sans"
@@ -1573,7 +1735,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                </div>
 
                                {/* Comprehensive Card Profile */}
-                               <div className="bg-white p-8 md:p-10 rounded-[32px] border border-slate-100 shadow-minimal relative overflow-hidden flex flex-col md:flex-row-reverse justify-between items-center gap-8 text-right font-sans">
+                               <div className="bg-white p-8 md:p-10 rounded-3xl border border-slate-100 shadow-minimal relative overflow-hidden flex flex-col md:flex-row-reverse justify-between items-center gap-8 text-right font-sans">
                                   <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/5 rounded-full filter blur-3xl pointer-events-none"></div>
                                   <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-500/5 rounded-full filter blur-3xl pointer-events-none"></div>
 
@@ -1587,7 +1749,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                         <div className="flex flex-row-reverse items-center justify-center md:justify-start gap-3 mt-1.5">
                                            <span className="bg-slate-100 border border-slate-200/50 px-3 py-1 text-[10px] font-black text-slate-600 rounded-xl font-sans">{grd?.name || 'غير محدد'}</span>
                                            <span className="bg-indigo-500/10 border border-indigo-200/50 px-3 py-1 text-[10px] font-black text-indigo-600 rounded-xl font-sans">{cls?.name || 'غير محدد'}</span>
-                                           <span className="text-slate-400 font-bold text-[10px] font-sans">العام: {academicYear}</span>
+                                           <span className="text-slate-400 font-bold text-[10px] font-sans">العام: {displayYear}</span>
                                         </div>
                                      </div>
                                   </div>
@@ -1612,7 +1774,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
 
                                {/* Four core metrics */}
                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 text-right font-sans">
-                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-[24px] border border-slate-100 shadow-minimal space-y-4">
+                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-2xl border border-slate-100 shadow-minimal space-y-4">
                                      <div className="flex items-center justify-between flex-row-reverse">
                                         <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100/30">
                                            <Trophy size={16} />
@@ -1625,7 +1787,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                      </div>
                                   </div>
 
-                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-[24px] border border-slate-100 shadow-minimal space-y-4">
+                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-2xl border border-slate-100 shadow-minimal space-y-4">
                                      <div className="flex items-center justify-between flex-row-reverse">
                                         <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100/30">
                                            <CheckCircle2 size={16} />
@@ -1638,7 +1800,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                      </div>
                                   </div>
 
-                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-[24px] border border-slate-100 shadow-minimal space-y-4">
+                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-2xl border border-slate-100 shadow-minimal space-y-4">
                                      <div className="flex items-center justify-between flex-row-reverse">
                                         <div className="w-9 h-9 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center border border-amber-100/30">
                                            <Sparkles size={16} />
@@ -1651,7 +1813,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                      </div>
                                   </div>
 
-                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-[24px] border border-slate-100 shadow-minimal space-y-4">
+                                  <div className="bg-gradient-to-br from-white to-slate-50/20 p-6 rounded-2xl border border-slate-100 shadow-minimal space-y-4">
                                      <div className="flex items-center justify-between flex-row-reverse">
                                         <div className="w-9 h-9 bg-red-50 text-rose-600 rounded-xl flex items-center justify-center border border-rose-100/30">
                                            <AlertCircle size={16} />
@@ -1668,7 +1830,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                {/* Graphical Analysis */}
                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 text-right font-sans">
                                   {/* Trend Line Chart */}
-                                  <div className="bg-white p-7 md:p-8 rounded-[28px] border border-slate-100 shadow-minimal space-y-6 animate-fadeIn font-sans">
+                                  <div className="bg-white p-7 md:p-8 rounded-2xl border border-slate-100 shadow-minimal space-y-6 animate-fadeIn font-sans">
                                      <div className="text-right flex justify-between items-center flex-row-reverse font-sans">
                                         <div>
                                            <h4 className="font-black text-slate-800 text-sm">منحنى الفهم والتقدم التحصيلي</h4>
@@ -1720,7 +1882,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                   </div>
 
                                   {/* Mastery Levels Bar Breakdown */}
-                                  <div className="bg-white p-7 md:p-8 rounded-[28px] border border-slate-100 shadow-minimal space-y-6">
+                                  <div className="bg-white p-7 md:p-8 rounded-2xl border border-slate-100 shadow-minimal space-y-6">
                                      <div className="text-right flex justify-between items-center flex-row-reverse font-sans">
                                         <div>
                                            <h4 className="font-black text-slate-800 text-sm">توزيع مستويات إتقان المهارات</h4>
@@ -1771,7 +1933,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                {/* Detailed History Sections */}
                                <div className="space-y-6 text-right font-sans">
                                   {/* Skills Records Table */}
-                                  <div className="bg-white rounded-[28px] border border-slate-100 shadow-minimal overflow-hidden text-right font-sans">
+                                  <div className="bg-white rounded-2xl border border-slate-100 shadow-minimal overflow-hidden text-right font-sans">
                                      <div className="p-6 bg-slate-50 border-b border-slate-100 flex flex-row bg-slate-50 border-b border-slate-100 justify-between items-center">
                                         <h4 className="font-black text-slate-800 text-xs flex items-center gap-2 flex-row font-sans">
                                            <BookOpen size={16} className="text-indigo-600 shrink-0 font-sans" />
@@ -1828,7 +1990,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                   </div>
 
                                   {/* Quiz Grades Records Table */}
-                                  <div className="bg-white rounded-[28px] border border-slate-100 shadow-minimal overflow-hidden text-right font-sans">
+                                  <div className="bg-white rounded-2xl border border-slate-100 shadow-minimal overflow-hidden text-right font-sans">
                                      <div className="p-6 bg-slate-50 border-b border-slate-100 flex flex-row bg-slate-50 border-b border-slate-100 justify-between items-center pr-2">
                                         <h4 className="font-black text-slate-800 text-xs flex items-center gap-2 flex-row font-sans">
                                            <Trophy size={16} className="text-amber-500 pr-0.5 shrink-0" />
@@ -1862,7 +2024,9 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
 
                                                     return (
                                                        <tr key={i} className="hover:bg-slate-50/10 transition-colors font-sans">
-                                                          <td className="py-4 px-5 text-slate-800 font-black font-sans">{quizObj?.title || 'اختبار مجهول الاسم'}</td>
+                                                          <td className="py-4 px-5 text-slate-800 font-black font-sans">
+                                                             {quizObj?.title || res.title || (res.quizId ? `اختبار (${res.quizId.slice(-6)})` : 'اختبار غير معروف')}
+                                                          </td>
                                                           <td className="py-4 px-5 font-sans">
                                                              <span className={`px-2.5 py-1.5 rounded-xl border font-black text-xs min-w-[50px] inline-block text-center ${quizScoreColor}`}>
                                                                 {res.score}%
@@ -1886,12 +2050,156 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                       })()
                    )}
                 </motion.div>
+             ) : activeTab === 'teachers' ? (
+                <motion.div 
+                  key="teachers"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="space-y-6"
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                       {data.teachers.filter(t => !t.isArchived && (!filterTeacherId || t.id === filterTeacherId)).map(teacher => {
+                          const teacherSubjects = data.subjects.filter(s => !s.isArchived && (s.teacherId === teacher.id || s.teacherIds?.includes(teacher.id)));
+                          const teacherClasses = data.classes.filter(c => !c.isArchived && (c.teacherIds?.includes(teacher.id) || teacherSubjects.some(ts => ts.gradeId === c.gradeId)));
+                          const teacherSkills = data.skills.filter(sk => teacherSubjects.some(sub => sub.id === sk.subjectId || sub.name === sk.subjectName));
+                          
+                          const tsPercentage = Math.round(teacherSubjects.reduce((acc, sub) => acc + (calculatePerformance ? calculatePerformance("", sub.id) : 0), 0) / (teacherSubjects.length || 1));
+                          
+                          // Calculate Trend Data
+                          const teacherStudentIds = data.students
+                            .filter(s => teacherClasses.some(tc => tc.id === s.classId))
+                            .map(s => s.id);
+
+                          const relevantResults = data.quizResults.filter(qr => 
+                            teacherStudentIds.includes(qr.studentId) && 
+                            !qr.isArchived
+                          );
+
+                          const now = new Date();
+                          const months = [0, 1, 2].map(i => {
+                            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                            return {
+                              month: d.getMonth(),
+                              year: d.getFullYear(),
+                              results: [] as number[]
+                            };
+                          });
+
+                          relevantResults.forEach(qr => {
+                            const date = qr.updatedAt && qr.updatedAt.toDate ? qr.updatedAt.toDate() : new Date(qr.updatedAt);
+                            const mIndex = months.findIndex(m => m.month === date.getMonth() && m.year === date.getFullYear());
+                            if (mIndex !== -1) {
+                              months[mIndex].results.push(qr.score);
+                            }
+                          });
+
+                          const trendValues = months.map(m => m.results.length > 0 ? Math.round(m.results.reduce((a, b) => a + b, 0) / m.results.length) : null).reverse();
+                          const hasTrend = trendValues.some(v => v !== null);
+                          const isImproving = trendValues[2] !== null && trendValues[1] !== null ? trendValues[2] >= trendValues[1] : true;
+                          
+                          return (
+                             <div 
+                               key={teacher.id} 
+                               onClick={() => {
+                                 if (onSelectTeacher) {
+                                   onSelectTeacher(teacher);
+                                 } else if (onFilterTeacherChange) {
+                                    onFilterTeacherChange(teacher.id);
+                                    setActiveTab("quizzes");
+                                  }
+                               }}
+                               className={`group relative flex items-center gap-4 bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-indigo-100 transition-all cursor-pointer overflow-hidden font-sans`}
+                             >
+                                <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100/50 text-indigo-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform overflow-hidden shadow-inner">
+                                   {teacher.photoUrl ? (
+                                     <img 
+                                       src={teacher.photoUrl} 
+                                       alt="" 
+                                       className="w-full h-full object-cover"
+                                       referrerPolicy="no-referrer"
+                                     />
+                                   ) : (
+                                     <User size={28} />
+                                   )}
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                   <div className="flex items-center justify-between gap-2 mb-1">
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                         <h4 className="font-black text-slate-800 text-[14px] leading-tight truncate group-hover:text-indigo-700 transition-colors">{teacher.name}</h4>
+                                         {hasTrend && (
+                                           <div className="flex items-center px-1.5 py-0.5 rounded-md bg-slate-50 border border-slate-100 shadow-sm shrink-0" title="مؤشر نمو الأداء (آخر 3 أشهر)">
+                                              <svg width="24" height="12" viewBox="0 0 24 12" className="overflow-visible">
+                                                 <path 
+                                                   d={`M ${trendValues.map((v, i) => `${i * 12} ${12 - ((v || tsPercentage || 50) / 100) * 12}`).join(" L ")}`}
+                                                   fill="none"
+                                                   stroke={isImproving ? "#10b981" : "#ef4444"}
+                                                   strokeWidth="2"
+                                                   strokeLinecap="round"
+                                                   strokeLinejoin="round"
+                                                 />
+                                              </svg>
+                                           </div>
+                                         )}
+                                      </div>
+                                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black shrink-0 ${tsPercentage >= 85 ? "bg-emerald-50 text-emerald-600" : "bg-indigo-50 text-indigo-600"}`}>
+                                         {tsPercentage}%
+                                      </span>
+                                   </div>
+                                   
+                                   <div className="flex items-center gap-2 mb-3">
+                                      <span className="px-2 py-0.5 bg-slate-100/80 text-slate-500 rounded-md text-[9px] font-black">معلم</span>
+                                      {teacher.specialization && (
+                                        <p className="text-[9px] font-bold text-slate-400 truncate tracking-tight">{teacher.specialization}</p>
+                                      )}
+                                   </div>
+
+                                   <div className="flex items-center gap-4 mb-3">
+                                      <div className="flex flex-col">
+                                         <span className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">الفصول</span>
+                                         <span className="text-[11px] font-black text-slate-700 leading-none">{teacherClasses.length}</span>
+                                      </div>
+                                      <div className="w-[1px] h-4 bg-slate-100" />
+                                      <div className="flex flex-col">
+                                         <span className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">المواد</span>
+                                         <span className="text-[11px] font-black text-slate-700 leading-none">{teacherSubjects.length}</span>
+                                      </div>
+                                      <div className="w-[1px] h-4 bg-slate-100" />
+                                      <div className="flex flex-col">
+                                         <span className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">المهارات</span>
+                                         <span className="text-[11px] font-black text-slate-700 leading-none">{teacherSkills.length}</span>
+                                      </div>
+                                   </div>
+
+                                   <div className="w-full bg-slate-100/80 rounded-full h-1.5 overflow-hidden">
+                                      <motion.div 
+                                        initial={{ width: 0 }} 
+                                        animate={{ width: `${tsPercentage}%` }} 
+                                        className={`h-full rounded-full ${tsPercentage >= 85 ? "bg-emerald-500" : "bg-indigo-600"}`} 
+                                      />
+                                   </div>
+                                </div>
+
+                                <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                   <div className="w-5 h-5 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500">
+                                      <ChevronLeft size={12} />
+                                   </div>
+                                </div>
+                             </div>
+                          );
+                       })}
+                    </div>
+                   {data.teachers.filter(t => !t.isArchived).length === 0 && (
+                      <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-3xl border border-slate-100 shadow-sm"><div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4"><Users size={32} className="text-slate-300" /></div><h4 className="text-sm font-black text-slate-700 tracking-tight mb-1">لا يوجد معلمين</h4><p className="text-xs font-semibold text-slate-400">لم يتم تعيين معلمين في النظام بعد</p></div>
+                   )}
+                </motion.div>
              ) : null}
           </AnimatePresence>
           {/* Report Export Footer */}
           <div className="hidden pt-10 border-t border-slate-100 mt-10 justify-between items-center print:flex" style={{ display: isExporting ? 'flex' : 'none' }}>
-            <p className="text-slate-400 font-bold text-sm italic">صدر هذا التقرير آلياً عبر منصة إتقان الذكية</p>
-            <div className="p-6 bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-[32px] text-white flex items-center gap-6 shadow-xl">
+            <p className="text-slate-500 font-semibold text-xs md:text-sm">صدر هذا التقرير آلياً عبر منصة إتقان الذكية</p>
+            <div className="p-6 bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-3xl text-white flex items-center gap-6 shadow-xl">
                <div className="text-right">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-1">المؤشر العام</p>
                   <p className="text-xl font-black">تعليم متقن في بيئة تربوية آمنة</p>
@@ -1916,7 +2224,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
               initial={{ scale: 0.95, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 20, opacity: 0 }}
-              className="bg-white w-full max-w-5xl lg:max-w-6xl rounded-[24px] shadow-2xl overflow-hidden relative border border-slate-100 flex flex-col md:flex-row h-auto md:h-[620px] max-h-[95vh]"
+              className="bg-white w-full max-w-5xl lg:max-w-6xl rounded-2xl shadow-2xl overflow-hidden relative border border-slate-100 flex flex-col md:flex-row h-auto md:h-[620px] max-h-[95vh]"
               onClick={e => e.stopPropagation()}
               dir="rtl"
             >
@@ -2058,7 +2366,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                          </div>
  
                          {/* أداء الفصول في هذا الاختبار */}
-                         <div className="mt-1 mb-3 bg-slate-50/70 p-4 rounded-[20px] border border-slate-100 flex-1 flex flex-col min-h-[220px] overflow-hidden">
+                         <div className="mt-1 mb-3 bg-slate-50/70 p-4 rounded-2xl border border-slate-100 flex-1 flex flex-col min-h-[220px] overflow-hidden">
                             <div className="flex items-center justify-between mb-3 border-b border-slate-100/60 pb-2.5">
                                <div className="flex items-center gap-2">
                                   <div className="w-6.5 h-6.5 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100/30">
@@ -2116,8 +2424,8 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                            margin={{ top: 22, right: 15, left: -25, bottom: 20 }}
                                         >
                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                           <XAxis dataKey="name" tick={{ fontSize: 9, fontWeight: 900, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                                           <YAxis domain={[0, 100]} tick={{ fontSize: 9, fontWeight: 900, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                           <XAxis dataKey="name" tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                           <YAxis domain={[0, 100]} tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} />
                                            <Tooltip 
                                               cursor={{ fill: '#f8fafc', radius: 8 }}
                                               content={({ active, payload }) => {
@@ -2132,7 +2440,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, onSelectS
                                                  return null;
                                               }}
                                            />
-                                           <Bar dataKey="achievement" radius={[6, 6, 0, 0]} barSize={18} label={{ fill: '#1e293b', fontSize: 9, fontWeight: 900, position: 'top', formatter: (v: any) => `${v}%` }}>
+                                           <Bar dataKey="achievement" radius={[6, 6, 0, 0]} barSize={18} label={{ fill: '#1e293b', fontSize: 9, fontWeight: 700, position: 'top', formatter: (v: any) => `${v}%` }}>
                                               {targetClasses.map((cls, index) => (
                                                  <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#4f46e5' : '#818cf8'} />
                                               ))}
@@ -2202,13 +2510,13 @@ function ConfirmModal({ config, onClose }: { config: any, onClose: () => void })
 
 function StatCard({ label, value, icon, color }: { label: string, value: string | number, icon: React.ReactNode, color: string }) {
   return (
-    <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-minimal flex items-center gap-6 group hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500 overflow-hidden relative">
-       <div className={`w-16 h-16 rounded-[24px] ${color} flex items-center justify-center group-hover:scale-110 transition-transform duration-500 relative z-10`}>
-          {React.cloneElement(icon as any, { size: 32 })}
+    <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4 group hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden relative">
+       <div className={`w-12 h-12 rounded-xl ${color} flex items-center justify-center group-hover:scale-105 transition-transform duration-300 relative z-10`}>
+          {React.cloneElement(icon as any, { size: 24 })}
        </div>
        <div className="relative z-10">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5">{label}</p>
-          <h4 className="text-3xl font-black text-slate-900 tracking-tighter transition-all group-hover:translate-x-1">{value}</h4>
+          <h4 className="text-xl md:text-2xl font-black text-slate-800 tracking-tighter transition-all">{value}</h4>
        </div>
        <div className="absolute right-0 bottom-0 w-24 h-24 bg-slate-50/50 rounded-full translate-x-8 translate-y-8 group-hover:scale-150 transition-transform duration-1000" />
     </div>

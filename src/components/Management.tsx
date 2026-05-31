@@ -50,42 +50,71 @@ import { APP_STAGES } from "../constants";
 import { ImageUploader } from "./ui/ImageUploader";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
 
-function parseBulkLine(line: string) {
+function parseBulkLine(line: string, type: "teachers" | "students" = "students") {
   const text = line.trim();
   if (!text) return null;
-  // Look for any word/token that consists entirely of numbers (6 to 14 digits)
+  
+  const parts = text.split(/[,;\t]/).map((p) => p.trim()).filter(p => p);
+  
+  if (type === "students") {
+    // Expected structure could be: Name, ID, Grade, Class
+    // Or just Name, ID
+    let name = parts[0] || "";
+    let nationalId = "";
+    let gradeName = "";
+    let className = "";
+
+    // Identify ID (Numeric string 6-14 digits)
+    const idIndex = parts.findIndex(p => /^\d{6,14}$/.test(p));
+    if (idIndex !== -1) {
+      nationalId = parts[idIndex];
+      // Assume first non-numeric part is name
+      const foundName = parts.find((p, i) => i !== idIndex && !/^\d+$/.test(p));
+      if (foundName) name = foundName;
+      
+      // Other parts could be Grade and Class
+      const remaining = parts.filter((p, i) => i !== idIndex && p !== name);
+      if (remaining.length >= 1) gradeName = remaining[0];
+      if (remaining.length >= 2) className = remaining[1];
+    } else if (parts.length >= 2) {
+      // Simple fallback
+      name = parts[0];
+      nationalId = parts[1];
+      if (parts.length >= 3) gradeName = parts[2];
+      if (parts.length >= 4) className = parts[3];
+    }
+
+    return { name, nationalId, gradeName, className };
+  }
+
+  // Teacher/Default logic (existing improved)
   const numberMatch = text.match(/\b\d{6,14}\b/);
   let nationalId = "";
   let name = text;
   if (numberMatch) {
     nationalId = numberMatch[0];
-    // Remove the national ID from the name text and clean other delimiters
     name = text
       .replace(nationalId, "")
       .replace(/[,;\t]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-  } else {
-    // Check if there is a comma or tab splitting
-    const parts = text.split(/[,;\t]/).map((p) => p.trim());
-    if (parts.length >= 2) {
-      const possibleId = parts.find((p) => /^\d+$/.test(p));
-      if (possibleId) {
-        nationalId = possibleId;
-        name = parts.filter((p) => p !== possibleId).join(" ");
-      } else {
-        name = parts[0];
-      }
-    }
+  } else if (parts.length >= 2) {
+     const possibleId = parts.find((p) => /^\d+$/.test(p));
+     if (possibleId) {
+       nationalId = possibleId;
+       name = parts.filter((p) => p !== possibleId).join(" ");
+     } else {
+       name = parts[0];
+     }
   }
-  return { name, nationalId };
+  return { name, nationalId, gradeName: "", className: "" };
 }
 
 const downloadCSVTemplate = (type: "teachers" | "students") => {
-  const headers = type === "teachers" ? "الاسم,رقم_الهوية\n" : "الاسم,رقم_الهوية,الصف,الفصل\n";
+  const headers = type === "teachers" ? "اسم_المعلم,رقم_الهوية\n" : "اسم_الطالب,رقم_الهوية,الصف_الدراسي,الفصل\n";
   const rows = type === "teachers"
     ? "خالد بن محمد العتيبي,1029384756\nعبدالرحمن بن عبدالله الحربي,1039485761"
-    : "عبدالرحمن بن محمد القحطاني,1049586722,الصف الثالث,ج\nسلطان بن خالد السبيعي,1059687733,الصف الرابع,أ";
+    : "عبدالرحمن بن محمد القحطاني,1049586722,الصف الثالث,أ\nسلطان بن خالد السبيعي,1059687733,الصف الرابع,ب";
   
   const csvContent = "\uFEFF" + "sep=,\n" + headers + rows; // Arabic UTF-8 BOM + Excel separator directive
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -117,7 +146,7 @@ function TabTitle({
 }) {
   return (
     <div className="mb-4">
-      <h2 className="text-2xl font-black text-slate-800">{title}</h2>
+      <h2 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800">{title}</h2>
       <p className="text-slate-500 font-medium text-xs mt-1">{description}</p>
     </div>
   );
@@ -374,6 +403,7 @@ export function Management({
               gradeId: gradeIds[0] || "",
               classIds: classIds,
               status: "published",
+              term: q.term || "term1",
               createdAt: new Date().toISOString(),
               questions: (q.questions || []).map(
                 (question: any, idx: number) => ({
@@ -399,7 +429,7 @@ export function Management({
         const id = Date.now() + Math.random().toString(36).substr(2, 9);
 
         if (bulkType === "teachers") {
-          const parsed = parseBulkLine(line);
+          const parsed = parseBulkLine(line, "teachers");
           if (parsed) {
             const teacherId = "t_" + id;
             await firestoreService.saveItem("teachers", teacherId, {
@@ -422,14 +452,28 @@ export function Management({
             name: line.trim(),
             teacherIds: [],
           });
-        } else if (bulkType === "students" && bulkClassId) {
-          const parsed = parseBulkLine(line);
+        } else if (bulkType === "students") {
+          const parsed = parseBulkLine(line, "students");
           if (parsed) {
+            // Smart Class Mapping if gradeName/className provided
+            let finalClassId = bulkClassId;
+            if (parsed.className || parsed.gradeName) {
+               const matchedGrade = data.grades.find(g => !g.isArchived && g.name.includes(parsed.gradeName || ''));
+               const matchedClass = data.classes.find(c => {
+                  const nameMatch = !c.isArchived && c.name.includes(parsed.className || '');
+                  const gradeMatch = matchedGrade ? c.name.includes(matchedGrade.name) : true;
+                  return nameMatch && gradeMatch;
+               });
+               if (matchedClass) finalClassId = matchedClass.id;
+            }
+
+            if (!finalClassId) continue; // Skip if no class assigned
+
             await firestoreService.saveItem("students", "st_" + id, {
               name: parsed.name,
-              classId: bulkClassId,
+              classId: finalClassId,
               isArchived: false,
-              academicYear: academicYear || "2025-2026",
+              academicYear: academicYear || "2024-2025",
               nationalId: parsed.nationalId,
             });
           }
@@ -499,6 +543,7 @@ export function Management({
   const [filterSubjectId, setFilterSubjectId] = useState("");
   const [filterQuizSubjectId, setFilterQuizSubjectId] = useState("");
   const [filterQuizGradeId, setFilterQuizGradeId] = useState("");
+  const [filterQuizTerm, setFilterQuizTerm] = useState<string>("");
 
   const filterTeacherId = onFilterTeacherChange
     ? propFilterTeacherId || ""
@@ -511,6 +556,7 @@ export function Management({
   // Quiz Form State
   const [quizTitle, setQuizTitle] = useState("");
   const [quizStatus, setQuizStatus] = useState<"draft" | "published">("draft");
+  const [quizTerm, setQuizTerm] = useState<"term1" | "term2">("term1");
   const [quizSubjectIds, setQuizSubjectIds] = useState<string[]>([]);
   const [quizSubjectName, setQuizSubjectName] = useState("");
   const [quizSelectedGradeId, setQuizSelectedGradeId] = useState("");
@@ -1049,6 +1095,7 @@ export function Management({
     setSkillQuestions("");
     setQuizTitle("");
     setQuizStatus("draft");
+    setQuizTerm("term1");
     setQuizSubjectIds([]);
     setQuizSubjectName("");
     setQuizSelectedGradeId("");
@@ -1191,6 +1238,7 @@ export function Management({
       const quizToSave: any = {
         title: quizTitle,
         status: quizStatus || "draft",
+        term: quizTerm,
         createdAt: new Date().toISOString(),
         stageId,
         subjectName: quizSubjectName,
@@ -1593,6 +1641,7 @@ export function Management({
     } else if (type === "quizzes") {
       setQuizTitle(item.title);
       setQuizStatus(item.status || "draft");
+      setQuizTerm(item.term || "term1");
       const subIds =
         item.subjectIds || (item.subjectId ? [item.subjectId] : []);
       setQuizSubjectIds(subIds);
@@ -1929,7 +1978,7 @@ export function Management({
             {/* Simplified Filters - removed the crowded dropdowns from first view */}
             <button
               onClick={onClose}
-              className="w-full flex items-center justify-center gap-2 py-5 bg-slate-900 text-white rounded-[28px] font-black text-sm hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200 active:scale-95 transition-all"
+              className="w-full flex items-center justify-center gap-2 py-5 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200 active:scale-95 transition-all"
             >
               إغلاق الإدارة
             </button>
@@ -1938,80 +1987,53 @@ export function Management({
 
         {/* Content Area */}
         <main className="flex-1 p-6 md:p-8 overflow-y-auto scrollbar-hide">
-          <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-            {/* Grade & Subject quick filters */}
-            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-              {/* Grade Selector */}
-              <div className="relative flex items-center bg-slate-50 rounded-xl border border-slate-200 px-3 py-1.5 focus-within:border-indigo-400 transition-all">
-                <span className="text-[10px] font-black text-slate-400 ml-2">
-                  الصف:
-                </span>
-                <select
-                  value={filterGradeId}
-                  onChange={(e) => {
-                    setFilterGradeId(e.target.value);
-                    setFilterClassId(""); // reset class filtering
-                  }}
-                  className="bg-transparent font-bold text-xs outline-none cursor-pointer text-slate-700 min-w-[120px]"
-                >
-                  <option value="">كل الصفوف</option>
-                  {data.grades
-                    .filter((g) => !g.isArchived)
-                    .map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
+          <div className="mb-4 flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-100 shadow-sm">
+            {/* Grade Selector */}
+            <select
+              value={filterGradeId}
+              onChange={(e) => {
+                setFilterGradeId(e.target.value);
+                setFilterClassId(""); // reset class filtering
+              }}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-[10px] outline-none cursor-pointer text-slate-700 min-w-[100px]"
+            >
+              <option value="">كل الصفوف</option>
+              {data.grades
+                .filter((g) => !g.isArchived)
+                .map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+            </select>
 
-              {/* Subject Selector */}
-              <div className="relative flex items-center bg-slate-50 rounded-xl border border-slate-200 px-3 py-1.5 focus-within:border-indigo-400 transition-all">
-                <span className="text-[10px] font-black text-slate-400 ml-2">
-                  المادة:
-                </span>
-                <select
-                  value={filterSubjectId}
-                  onChange={(e) => setFilterSubjectId(e.target.value)}
-                  className="bg-transparent font-bold text-xs outline-none cursor-pointer text-slate-700 min-w-[120px]"
-                >
-                  <option value="">كل المواد</option>
-                  {data.subjects
-                    .filter((s) => !s.isArchived)
-                    .filter(
-                      (s) => !filterGradeId || s.gradeId === filterGradeId,
-                    )
-                    .map((s) => {
-                      const grade = data.grades.find((g) => g.id === s.gradeId);
-                      return (
-                        <option key={s.id} value={s.id}>
-                          {s.name} {grade ? `(${grade.name})` : ""}
-                        </option>
-                      );
-                    })}
-                </select>
-              </div>
+            {/* Subject Selector */}
+            <select
+              value={filterSubjectId}
+              onChange={(e) => setFilterSubjectId(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-[10px] outline-none cursor-pointer text-slate-700 min-w-[100px]"
+            >
+              <option value="">كل المواد</option>
+              {data.subjects
+                .filter((s) => !s.isArchived)
+                .filter(
+                  (s) => !filterGradeId || s.gradeId === filterGradeId,
+                )
+                .map((s) => {
+                  const grade = data.grades.find((g) => g.id === s.gradeId);
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {grade ? `(${grade.name})` : ""}
+                    </option>
+                  );
+                })}
+            </select>
+            
+            <div className="flex-1" />
 
-              {/* Clear Filters Button */}
-              {(filterGradeId || filterSubjectId) && (
-                <button
-                  onClick={() => {
-                    setFilterGradeId("");
-                    setFilterSubjectId("");
-                    setFilterClassId("");
-                  }}
-                  className="p-2 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-500 rounded-xl transition-all font-black text-xs cursor-pointer flex items-center gap-1"
-                  title="مسح التصفية"
-                >
-                  <X size={14} />
-                  <span>مسح التصفية</span>
-                </button>
-              )}
-            </div>
-
-            <div className="relative w-full max-w-[180px]">
+            <div className="relative w-full max-w-[150px]">
               <Search
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
                 size={12}
               />
               <input
@@ -2019,9 +2041,24 @@ export function Management({
                 placeholder="بحث..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-8 bg-white border border-slate-200 rounded-lg pr-8 pl-3 font-bold text-[11px] outline-none focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
+                className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg pr-7 pl-2 font-bold text-[10px] outline-none focus:ring-2 focus:ring-indigo-100 transition-all"
               />
             </div>
+            
+            {/* Clear Filters Button */}
+            {(filterGradeId || filterSubjectId) && (
+              <button
+                onClick={() => {
+                  setFilterGradeId("");
+                  setFilterSubjectId("");
+                  setFilterClassId("");
+                }}
+                className="p-1.5 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-500 hover:text-white transition-all flex items-center gap-1"
+                title="مسح التصفية"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
 
           {activeTab === "grades" && (
@@ -2726,32 +2763,39 @@ export function Management({
                             </div>
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1 shrink-0">
                           <button
                             disabled={isProcessing}
-                            onClick={() => handleEdit("students", s)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEdit("students", s);
+                            }}
                             title="تعديل"
-                            className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-all bg-slate-50 rounded-xl disabled:opacity-30"
+                            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-all bg-slate-50 rounded-lg disabled:opacity-30"
                           >
-                            <Edit2 size={18} />
+                            <Edit2 size={16} />
                           </button>
                           <button
                             disabled={isProcessing}
-                            onClick={() => handleArchive("students", s)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleArchive("students", s);
+                            }}
                             title="أرشفة (انسحاب طالب)"
-                            className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-all bg-slate-50 rounded-xl disabled:opacity-30"
+                            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-all bg-slate-50 rounded-lg disabled:opacity-30"
                           >
-                            <Archive size={18} />
+                            <Archive size={16} />
                           </button>
                           <button
                             disabled={isProcessing}
-                            onClick={() =>
-                              handleDelete("students", s.id, s.name)
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete("students", s.id, s.name);
+                            }}
                             title="حذف نهائي"
-                            className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-red-500 hover:bg-red-50 transition-all bg-slate-50 rounded-xl disabled:opacity-30"
+                            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-500 hover:bg-red-50 transition-all bg-slate-50 rounded-lg disabled:opacity-30"
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       </div>
@@ -3091,7 +3135,7 @@ export function Management({
                       </div>
                     ))}
                   {data.skills.length === 0 && (
-                    <div className="col-span-full py-12 text-center bg-slate-50 rounded-[40px] border border-dashed border-slate-200">
+                    <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
                       <Star size={40} className="mx-auto text-slate-200 mb-4" />
                       <p className="text-slate-400 font-bold">
                         لا توجد مهارات مضافة حالياً.
@@ -3113,7 +3157,7 @@ export function Management({
                 <div className="bg-white rounded-[48px] border border-slate-100 shadow-minimal overflow-hidden">
                   <div className="bg-slate-900 p-8 text-white flex justify-between items-center">
                     <div>
-                      <h3 className="text-2xl font-black flex items-center gap-3">
+                      <h3 className="text-xl md:text-2xl font-black tracking-tighter flex items-center gap-3">
                         <BrainCircuit className="text-indigo-400" />
                         {editingId
                           ? "تعديل الاختبار الذكي"
@@ -3146,7 +3190,7 @@ export function Management({
                             value={quizTitle}
                             onChange={(e) => setQuizTitle(e.target.value)}
                             placeholder="مثال: رحلة الفهم القرائي (١)..."
-                            className="w-full h-20 bg-slate-50 border-2 border-slate-100 rounded-[32px] px-8 text-xl font-black outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
+                            className="w-full h-20 bg-slate-50 border-2 border-slate-100 rounded-3xl px-8 text-xl font-black outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
                           />
                         </div>
 
@@ -3245,7 +3289,7 @@ export function Management({
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="space-y-3">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
                               صورة الواجهة
@@ -3258,16 +3302,39 @@ export function Management({
                           </div>
                           <div className="space-y-3">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                              الفصل الدراسي الأكاديمي
+                            </label>
+                            <div className="grid grid-cols-2 gap-3 p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => setQuizTerm("term1")}
+                                className={`py-6 rounded-2xl font-black text-xs transition-all ${quizTerm === "term1" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
+                              >
+                                الفصل الأول
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setQuizTerm("term2")}
+                                className={`py-6 rounded-2xl font-black text-xs transition-all ${quizTerm === "term2" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
+                              >
+                                الفصل الثاني
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
                               النشر الأولي
                             </label>
-                            <div className="grid grid-cols-2 gap-3 p-2 bg-slate-50 rounded-[28px] border border-slate-100">
+                            <div className="grid grid-cols-2 gap-3 p-2 bg-slate-50 rounded-2xl border border-slate-100">
                               <button
+                                type="button"
                                 onClick={() => setQuizStatus("published")}
                                 className={`py-6 rounded-2xl font-black text-xs transition-all ${quizStatus === "published" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
                               >
                                 نشر مباشر
                               </button>
                               <button
+                                type="button"
                                 onClick={() => setQuizStatus("draft")}
                                 className={`py-6 rounded-2xl font-black text-xs transition-all ${quizStatus === "draft" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
                               >
@@ -3893,7 +3960,7 @@ export function Management({
                 <div className="w-16 h-16 rounded-3xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
                   <Settings size={32} />
                 </div>
-                <h3 className="text-2xl font-black text-slate-800">
+                <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800">
                   تحديث شعار المدرسة
                 </h3>
                 <p className="text-slate-500 font-medium text-sm leading-relaxed">
@@ -3930,7 +3997,7 @@ export function Management({
                   <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4">
                     <Archive size={32} />
                   </div>
-                  <h3 className="text-2xl font-black text-slate-800">
+                  <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800">
                     أرشفة العام الدراسي
                   </h3>
                   <p className="text-slate-500 font-medium text-sm leading-relaxed">
@@ -3966,7 +4033,7 @@ export function Management({
                   <div className="w-16 h-16 rounded-3xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
                     <ArrowUpCircle size={32} />
                   </div>
-                  <h3 className="text-2xl font-black text-slate-800">
+                  <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-800">
                     ترفيع الطلاب للعام القادم
                   </h3>
                   <p className="text-slate-500 font-medium text-sm leading-relaxed">
@@ -4044,7 +4111,7 @@ export function Management({
               description="تصميم نماذج تقييم الزيارات (بنود، أقسام، درجات)"
             >
               <div className="space-y-8">
-                <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100 flex flex-col gap-6">
+                <div className="bg-slate-50 p-8 rounded-3xl border border-slate-100 flex flex-col gap-6">
                   <div className="flex gap-4">
                     <input
                       type="text"
@@ -4258,7 +4325,7 @@ export function Management({
               description="إدارة حسابات المشرفين والمعلمين للدخول عبر رقم الهوية"
             >
               <div className="space-y-8">
-                <div className="bg-indigo-900 p-8 rounded-[40px] text-white flex flex-col md:flex-row justify-between items-center gap-6 shadow-xl shadow-indigo-100">
+                <div className="bg-indigo-900 p-8 rounded-3xl text-white flex flex-col md:flex-row justify-between items-center gap-6 shadow-xl shadow-indigo-100">
                   <div>
                     <h3 className="text-xl font-black mb-2">
                       رابط الخدمة الخارجية
@@ -4286,7 +4353,7 @@ export function Management({
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100 flex flex-col gap-6">
+                <div className="bg-slate-50 p-8 rounded-3xl border border-slate-100 flex flex-col gap-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase mr-2">
@@ -4445,7 +4512,7 @@ function SectionContainer({
   return (
     <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
       <div className="mb-10">
-        <h2 className="text-2xl font-black text-slate-900 leading-tight">
+        <h2 className="text-xl md:text-2xl font-black tracking-tighter text-slate-900 leading-tight">
           {title}
         </h2>
         <p className="text-slate-500 font-medium mt-2">{description}</p>
@@ -4495,10 +4562,14 @@ function GradeManagerCard({
   onDelete: () => void;
   isProcessing: boolean;
 }) {
-  const [newClassName, setNewClassName] = useState("");
-  const [newSubjectName, setNewSubjectName] = useState("");
-  const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([]);
+  
+  const toggleTeacher = (tId: string) => {
+    setSelectedTeacherIds((prev) =>
+      prev.includes(tId) ? prev.filter((id) => id !== tId) : [...prev, tId],
+    );
+  };
 
   const gradeClasses = data.classes.filter(
     (c: any) => c.gradeId === grade.id && !c.isArchived,
@@ -4507,32 +4578,25 @@ function GradeManagerCard({
     (s: any) => s.gradeId === grade.id && !s.isArchived,
   );
 
-  const toggleTeacher = (tId: string) => {
-    setSelectedTeacherIds((prev) =>
-      prev.includes(tId) ? prev.filter((id) => id !== tId) : [...prev, tId],
-    );
-  };
-
   return (
-    <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-minimal transition-shadow duration-300">
-      <div className="p-6 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-inner">
-            <ListRestart size={24} />
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="px-4 py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <ListRestart size={18} />
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-800">{grade.name}</h3>
-            <p className="text-slate-400 font-bold text-xs mt-1">
-              تضم {gradeClasses.length} فصول و {gradeSubjects.length} مواد
+            <h3 className="font-black text-slate-800 text-sm leading-tight">{grade.name}</h3>
+            <p className="text-slate-400 font-bold text-[10px] mt-0.5">
+              {gradeClasses.length} فصول • {gradeSubjects.length} مواد
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-2"
+            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
           >
-            {isExpanded ? "طي التفاصيل" : "عرض التفاصيل"}
             <ChevronRight
               size={16}
               className={`transform transition-transform ${isExpanded ? "-rotate-90" : "rotate-90"}`}
@@ -4541,28 +4605,28 @@ function GradeManagerCard({
           <button
             onClick={onEdit}
             disabled={isProcessing}
-            className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
           >
             <Edit2 size={16} />
           </button>
           <button
             onClick={onDelete}
             disabled={isProcessing}
-            className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
           >
             <Trash2 size={16} />
           </button>
         </div>
       </div>
+      {isExpanded && (
+        <motion.div
+           initial={{ height: 0, opacity: 0 }}
+           animate={{ height: "auto", opacity: 1 }}
+           exit={{ height: 0, opacity: 0 }}
+           className="p-6 space-y-8"
+         >
 
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="p-6 space-y-8"
-          >
+
             {/* Classes Section */}
             <div className="space-y-4">
               <h4 className="font-black text-slate-800 flex items-center gap-2 text-lg">
@@ -4585,36 +4649,6 @@ function GradeManagerCard({
                 )}
               </div>
 
-              <div className="flex gap-2 w-full max-w-sm mt-2">
-                <input
-                  type="text"
-                  value={newClassName}
-                  onChange={(e) => setNewClassName(e.target.value)}
-                  placeholder="اسم الفصل الجديد (مثال: أول أ)"
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100 transition-all"
-                />
-                <button
-                  disabled={!newClassName || isProcessing}
-                  onClick={async () => {
-                    if (!newClassName) return;
-                    await firestoreService.saveItem(
-                      "classes",
-                      "c_" +
-                        Date.now() +
-                        Math.random().toString(36).substr(2, 5),
-                      {
-                        name: newClassName.trim(),
-                        gradeId: grade.id,
-                        teacherIds: [],
-                      },
-                    );
-                    setNewClassName("");
-                  }}
-                  className="bg-blue-600 text-white px-4 rounded-xl text-sm font-black flex items-center gap-1 hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  <Plus size={16} /> إضافة
-                </button>
-              </div>
             </div>
 
             <div className="h-px bg-slate-100 w-full" />
@@ -4656,74 +4690,9 @@ function GradeManagerCard({
                 </span>
               )}
 
-              <div className="flex flex-col gap-3 w-full bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    value={newSubjectName}
-                    onChange={(e) => setNewSubjectName(e.target.value)}
-                    placeholder="اسم المادة (مثال: رياضيات)"
-                    className="flex-[2] bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-purple-100 transition-all"
-                  />
-                  <button
-                    disabled={
-                      !newSubjectName ||
-                      selectedTeacherIds.length === 0 ||
-                      isProcessing
-                    }
-                    onClick={async () => {
-                      if (!newSubjectName || selectedTeacherIds.length === 0)
-                        return;
-                      const selectedTeachers = data.teachers.filter((t: any) =>
-                        selectedTeacherIds.includes(t.id),
-                      );
-                      await firestoreService.saveItem(
-                        "subjects",
-                        "sub_" + Date.now(),
-                        {
-                          name: newSubjectName.trim(),
-                          teacherIds: selectedTeacherIds,
-                          teacherNames: selectedTeachers.map(
-                            (t: any) => t.name,
-                          ),
-                          gradeId: grade.id,
-                        },
-                      );
-                      setNewSubjectName("");
-                      setSelectedTeacherIds([]);
-                    }}
-                    className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-black flex items-center justify-center gap-1 hover:bg-purple-700 transition-colors disabled:opacity-50"
-                  >
-                    <Plus size={16} /> إضافة وإسناد للمادة
-                  </button>
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">
-                    اختر المعلمين لهذه المادة
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {data.teachers
-                      .filter((t: any) => !t.isArchived)
-                      .map((t: any) => {
-                        const isSelected = selectedTeacherIds.includes(t.id);
-                        return (
-                          <button
-                            key={t.id}
-                            onClick={() => toggleTeacher(t.id)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${isSelected ? "bg-purple-100 border-purple-300 text-purple-700" : "bg-white border-slate-200 text-slate-500 hover:border-purple-200 hover:bg-purple-50"}`}
-                          >
-                            {t.name}
-                          </button>
-                        );
-                      })}
-                  </div>
-                </div>
-              </div>
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
-    </div>
+      </div>
   );
 }

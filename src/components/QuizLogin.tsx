@@ -84,56 +84,56 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
   ];
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[80] flex flex-col font-sans overflow-hidden" dir="rtl">
+    <div className="fixed inset-0 bg-slate-50 z-[80] flex flex-col font-sans overflow-hidden text-slate-800" dir="rtl">
       {/* Premium Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/15 rounded-full blur-[120px] animate-pulse" />
         <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full opacity-[0.03] grayscale" 
-             style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full opacity-[0.05] grayscale" 
+             style={{ backgroundImage: 'radial-gradient(#4f46e5 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
       </div>
 
       {/* Top Navigation */}
-      <div className="p-3 md:py-3 md:px-6 flex justify-between items-center relative z-10 border-b border-white/5 bg-slate-950/20 backdrop-blur-sm">
+      <div className="p-3 md:py-3 md:px-6 flex justify-between items-center relative z-10 border-b border-slate-200/80 bg-white/75 backdrop-blur-md">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+          <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-xl flex items-center justify-center shadow-md ring-1 ring-white/10">
             <ShieldCheck className="text-white" size={20} />
           </div>
           <div className="hidden sm:block">
-            <h1 className="text-white text-base font-black tracking-tight">بوابة إتقان</h1>
-            <p className="text-indigo-400 text-[8px] font-bold uppercase tracking-widest mt-0.5">Interactive Hub</p>
+            <h1 className="text-slate-800 text-base font-black tracking-tight">بوابة إتقان</h1>
+            <p className="text-indigo-600 text-[8px] font-bold uppercase tracking-widest mt-0.5">Interactive Hub</p>
           </div>
         </div>
 
         {/* Step Indicator */}
-        <div className="flex items-center bg-white/5 p-1 rounded-xl border border-white/10">
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
           {steps.map((s, idx) => (
             <React.Fragment key={s.id}>
               <div 
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-500 ${
                   step === s.id 
-                  ? 'bg-white text-indigo-950 shadow-lg font-black' 
-                  : (idx < steps.findIndex(x => x.id === step) ? 'text-green-400' : 'text-slate-500')
+                  ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50 font-black' 
+                  : (idx < steps.findIndex(x => x.id === step) ? 'text-emerald-600' : 'text-slate-400')
                 }`}
               >
-                {idx < steps.findIndex(x => x.id === step) ? <Award size={14} /> : s.icon}
+                {idx < steps.findIndex(x => x.id === step) ? <CheckCircle2 size={14} className="text-emerald-500" /> : s.icon}
                 <span className="text-[10px] hidden md:block">{s.label}</span>
               </div>
-              {idx < steps.length - 1 && <div className="w-4 h-[1px] bg-white/10 mx-1" />}
+              {idx < steps.length - 1 && <div className="w-4 h-[1px] bg-slate-200 mx-1" />}
             </React.Fragment>
           ))}
         </div>
 
         <button 
           onClick={onClose}
-          className="group flex items-center gap-2 bg-white/5 hover:bg-red-500/10 text-slate-300 hover:text-red-400 px-4 py-2 rounded-lg transition-all border border-white/5"
+          className="group flex items-center gap-2 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 px-4 py-2 rounded-lg transition-all border border-slate-200/80 shadow-sm hover:border-red-200"
         >
           <span className="text-[10px] font-black">خروج</span>
           <XCircle size={16} />
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-start py-4 px-6 md:py-6 md:px-12 relative z-10 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-start py-4 px-6 md:py-8 md:px-12 relative z-10 overflow-y-auto">
         <div className="w-full max-w-6xl">
           <AnimatePresence mode="wait">
             {step === 'stage' && (
@@ -145,15 +145,15 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                 className="space-y-8"
               >
                 <div className="text-center space-y-2">
-                  <h2 className="text-xs font-black text-white">بوابة الاختبارات</h2>
-                  <p className="text-indigo-300/70 text-[8px]">اختر المرحلة التعليمية للبدء</p>
+                  <h2 className="text-xs font-black text-indigo-600 uppercase tracking-wider">بوابة الاختبارات الأكاديمية</h2>
+                  <p className="text-slate-500 text-sm font-semibold">اختر المرحلة التعليمية للبدء في الاختبار المخصص لك</p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
                   {STAGES.map((stg) => (
                     <motion.button 
                        key={stg.id}
                        onClick={() => handleStageSelect(stg.id)}
-                       className="bg-white/5 hover:bg-indigo-600 p-8 rounded-3xl border border-white/10 text-white font-black text-xl transition-all"
+                       className="bg-white hover:bg-indigo-600 p-8 rounded-3xl border border-slate-200 hover:border-indigo-600 text-slate-800 hover:text-white font-black text-xl transition-all shadow-sm hover:shadow-lg hover:shadow-indigo-500/10"
                     >
                       {stg.name}
                     </motion.button>
@@ -171,15 +171,15 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                 className="space-y-8"
               >
                 <div className="text-center space-y-4">
-                  <button onClick={() => setStep('stage')} className="text-indigo-400 text-[10px] font-black flex items-center gap-1 mx-auto bg-white/5 px-3 py-1.5 rounded-full"><ChevronRight size={14}/> العودة للمراحل</button>
-                  <h2 className="text-xl md:text-2xl font-black text-white">اختر الصف الدراسي</h2>
+                  <button onClick={() => setStep('stage')} className="text-indigo-600 hover:bg-slate-200 text-[10px] font-black flex items-center gap-1 mx-auto bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/50"><ChevronRight size={14}/> العودة للمراحل</button>
+                  <h2 className="text-2xl font-black text-slate-800">اختر الصف الدراسي</h2>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {data.grades.filter(g => (g.stage || 'primary') === selectedStage && !g.isArchived).map((grade) => (
                     <motion.button 
                       key={grade.id}
                       onClick={() => handleGradeSelect(grade)}
-                      className="bg-white/10 hover:bg-indigo-600 p-6 rounded-2xl border border-white/10 text-white font-bold"
+                      className="bg-white hover:bg-indigo-600 hover:text-white p-6 rounded-2xl border border-slate-200 shadow-sm text-slate-800 font-bold hover:shadow-md transition-all duration-200"
                     >
                       {grade.name}
                     </motion.button>
@@ -197,8 +197,8 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                 className="space-y-8"
               >
                 <div className="text-center space-y-4">
-                  <button onClick={() => setStep('grade')} className="text-indigo-400 text-[10px] font-black flex items-center gap-1 mx-auto bg-white/5 px-3 py-1.5 rounded-full"><ChevronRight size={14}/> العودة للصوف ({selectedGrade?.name})</button>
-                  <h2 className="text-xl md:text-2xl font-black text-white">اختر فصلك</h2>
+                  <button onClick={() => setStep('grade')} className="text-indigo-600 hover:bg-slate-200 text-[10px] font-black flex items-center gap-1 mx-auto bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/50"><ChevronRight size={14}/> العودة للصفوف ({selectedGrade?.name})</button>
+                  <h2 className="text-2xl font-black text-slate-800">اختر فصلك الدراسي</h2>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -209,19 +209,19 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.05 }}
                       onClick={() => handleClassSelect(cls)}
-                      className="group relative bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-3xl text-right transition-all hover:border-indigo-500/50 flex flex-col gap-4"
+                      className="group relative bg-white hover:bg-indigo-50/20 backdrop-blur-xl border border-slate-200 hover:border-indigo-500/50 p-6 rounded-3xl text-right transition-all flex flex-col gap-4 shadow-sm"
                     >
                       <div className="flex justify-between items-start">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-all">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-md group-hover:scale-105 transition-all">
                           <Users size={20} className="text-white" />
                         </div>
-                        <div className="px-2 py-0.5 bg-white/5 rounded-full text-[8px] text-white/40 font-bold border border-white/5">
+                        <div className="px-2 py-0.5 bg-slate-100 rounded-full text-[8px] text-slate-500 font-bold border border-slate-200">
                            فصل
                         </div>
                       </div>
                       <div>
-                        <h3 className="text-lg font-black text-white group-hover:text-indigo-400 transition-colors">{cls.name}</h3>
-                        <p className="text-slate-500 font-bold mt-1 text-[10px]">دخول الفصل</p>
+                        <h3 className="text-lg font-black text-slate-800 group-hover:text-indigo-600 transition-colors">{cls.name}</h3>
+                        <p className="text-slate-400 font-bold mt-1 text-[10px]">دخول الفصل</p>
                       </div>
                     </motion.button>
                   ))}
@@ -238,8 +238,8 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                 className="space-y-8"
               >
                 <div className="text-center space-y-4">
-                  <button onClick={() => setStep('class')} className="text-indigo-400 text-[10px] font-black flex items-center gap-1 mx-auto bg-white/5 px-3 py-1.5 rounded-full"><ChevronRight size={14}/> العودة للفصول ({selectedClass?.name})</button>
-                  <h2 className="text-xl md:text-2xl font-black text-white italic">الاختبارات المتاحة لهذا الفصل</h2>
+                  <button onClick={() => setStep('class')} className="text-indigo-600 hover:bg-slate-200 text-[10px] font-black flex items-center gap-1 mx-auto bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/50"><ChevronRight size={14}/> العودة للفصول ({selectedClass?.name})</button>
+                  <h2 className="text-2xl font-black text-slate-800">الاختبارات المتوفرة للفصل</h2>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -256,28 +256,28 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                            animate={{ opacity: 1, y: 0 }}
                            transition={{ delay: idx * 0.1 }}
                            onClick={() => handleQuizSelect(quiz)}
-                           className="group relative h-[145px] bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 rounded-2xl text-right transition-all hover:border-indigo-500/50 flex flex-col overflow-hidden shadow-lg"
+                           className="group relative h-[145px] bg-white hover:bg-slate-50 backdrop-blur-xl border border-slate-200 rounded-2xl text-right transition-all hover:border-indigo-500/50 flex flex-col overflow-hidden shadow-sm hover:shadow-md"
                          >
                             {/* Background Image / Gradient */}
                             <div className="absolute inset-0 z-0">
                                {quiz.imageUrl ? (
-                                  <img src={quiz.imageUrl} alt="" className="w-full h-full object-cover opacity-30 group-hover:opacity-50 group-hover:scale-110 transition-all duration-700" referrerPolicy="no-referrer" />
+                                  <img src={quiz.imageUrl} alt="" className="w-full h-full object-cover opacity-10 group-hover:opacity-20 group-hover:scale-105 transition-all duration-700" referrerPolicy="no-referrer" />
                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-br from-indigo-600/10 to-purple-600/10" />
+                                  <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-purple-55" />
                                )}
-                               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent" />
+                               <div className="absolute inset-0 bg-gradient-to-t from-white via-white/80 to-transparent" />
                             </div>
 
-                            <div className="relative z-10 p-3 h-full flex flex-col justify-between">
+                            <div className="relative z-10 p-4 h-full flex flex-col justify-between">
                                <div className="flex justify-between items-start">
-                                  <div className="w-8 h-8 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-sm">
-                                     <BrainCircuit size={14} className="text-white" />
+                                  <div className="w-8 h-8 rounded-lg bg-white/80 backdrop-blur-md border border-slate-200 flex items-center justify-center shadow-sm">
+                                     <BrainCircuit size={14} className="text-indigo-600" />
                                   </div>
                                   <div className="flex flex-col items-end gap-0.5">
                                      <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-full text-[8px] font-black shadow-sm">
                                         {subjectName}
                                      </span>
-                                     <div className="flex items-center gap-0.5 text-[8px] font-black text-indigo-300">
+                                     <div className="flex items-center gap-0.5 text-[8px] font-black text-indigo-600 mt-1">
                                         <CheckCircle2 size={8} />
                                         {completionCount} / {totalCount} رصد
                                      </div>
@@ -285,27 +285,24 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                                </div>
 
                                <div className="space-y-1.5 text-right w-full">
-                                  <h3 className="text-xs font-black text-white group-hover:text-amber-400 transition-colors leading-tight line-clamp-1">{quiz.title}</h3>
-                                  <div className="pt-2 border-t border-white/10 flex justify-between items-center w-full">
-                                     <p className="text-slate-400 font-bold text-[8px] flex items-center gap-0.5">
-                                        <BookOpen size={10} />
+                                  <h3 className="text-xs font-black text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight line-clamp-1">{quiz.title}</h3>
+                                  <div className="pt-2 border-t border-slate-100 flex justify-between items-center w-full">
+                                     <p className="text-slate-500 font-bold text-[8px] flex items-center gap-0.5">
+                                        <BookOpen size={10} className="text-slate-400" />
                                         {quiz.questions.length} أسئلة مهارية
                                      </p>
-                                     <div className="bg-white/10 hover:bg-white text-white hover:text-indigo-950 w-6 h-6 rounded-lg flex items-center justify-center transition-all shadow-sm backdrop-blur-md border border-white/10 shrink-0">
+                                     <div className="bg-slate-100 text-indigo-600 hover:bg-indigo-600 hover:text-white w-6 h-6 rounded-lg flex items-center justify-center transition-all shadow-sm border border-slate-200 shrink-0">
                                         <ArrowRight size={12} />
                                      </div>
                                   </div>
                                </div>
                             </div>
-                            
-                            {/* Animated Border/Glow effect */}
-                            <div className="absolute inset-0 border border-white/0 group-hover:border-indigo-500/20 rounded-2xl transition-all pointer-events-none" />
                          </motion.button>
                        );
                      })
                    ) : (
                      <div className="col-span-full py-20 text-center">
-                        <BookOpen size={48} className="text-white/10 mx-auto mb-4" />
+                        <BookOpen size={48} className="text-slate-300 mx-auto mb-4" />
                         <p className="text-slate-500 font-black italic">لا توجد اختبارات منشورة لهذا الفصل حالياً</p>
                      </div>
                    )}
@@ -321,19 +318,19 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                 exit={{ opacity: 0, x: -20 }}
                 className="w-full max-w-4xl mx-auto space-y-4"
               >
-                {/* Clean Header Row: Title on the right, small left-aligned search on user request */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-white/5 pb-4">
+                {/* Clean Header Row */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200 pb-4">
                   <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <button onClick={() => setStep('quiz')} className="text-indigo-400 text-[10px] font-black flex items-center gap-1 bg-white/5 px-2.5 py-1 rounded-full hover:bg-white/10 transition-colors shrink-0">
+                    <button onClick={() => setStep('quiz')} className="text-indigo-600 hover:bg-slate-200 text-[10px] font-black flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200/50 shrink-0">
                       <ChevronRight size={12}/> عودة
                     </button>
                     <div className="text-right">
-                      <h2 className="text-base font-black text-white">اختر اسم الطالب</h2>
-                      <p className="text-slate-400 text-[9px] font-bold">اختبار: {selectedQuiz.title}</p>
+                      <h2 className="text-base font-black text-slate-800">اختر اسم الطالب</h2>
+                      <p className="text-slate-500 text-[9px] font-bold">اختبار: {selectedQuiz.title}</p>
                     </div>
                   </div>
 
-                  {/* Left-aligned small search bar, no explanation text */}
+                  {/* Search Bar */}
                   <div className="relative w-full sm:w-60">
                     <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
                       <Search size={14} />
@@ -343,13 +340,13 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                       placeholder="بحث عن اسم الطالب..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full h-9 pr-9 pl-3 bg-white/5 border border-white/10 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-indigo-600/30 focus:border-indigo-500/50 transition-all font-sans text-right"
+                      className="w-full h-9 pr-9 pl-3 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500/50 transition-all font-sans text-right"
                       autoFocus
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[420px] overflow-y-auto scrollbar-hide p-2 bg-white/5 rounded-2xl border border-white/10">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[420px] overflow-y-auto scrollbar-hide p-2 bg-white rounded-2xl border border-slate-200 shadow-sm">
                    {studentList.length > 0 ? (
                      studentList.map((st, i) => (
                        <motion.button 
@@ -358,23 +355,23 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                          animate={{ opacity: 1, y: 0 }}
                          transition={{ delay: i * 0.01 }}
                          onClick={() => onSelect(selectedQuiz, st)}
-                         className={`text-right p-2.5 rounded-xl flex items-center gap-2.5 transition-all group relative overflow-hidden border ${st.isCompleted ? 'bg-emerald-500/10 border-emerald-500/35' : 'bg-white/5 border-white/5 hover:bg-indigo-600/90 hover:border-indigo-600'}`}
+                         className={`text-right p-2.5 rounded-xl flex items-center gap-2.5 transition-all group relative overflow-hidden border ${st.isCompleted ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-slate-50 border-slate-150 hover:bg-indigo-600 hover:border-indigo-600 text-slate-800 hover:text-white'}`}
                        >
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs text-white shrink-0 transition-colors ${st.isCompleted ? 'bg-emerald-500' : 'bg-white/10 group-hover:bg-white/20'}`}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shrink-0 transition-colors ${st.isCompleted ? 'bg-emerald-500 text-white' : 'bg-white text-slate-600 group-hover:bg-white/20 group-hover:text-amber-400 shadow-sm border border-slate-150'}`}>
                              {st.isCompleted ? <CheckCircle2 size={14} /> : st.name.charAt(0)}
                           </div>
                           <div className="flex-1 min-w-0">
-                             <p className={`font-black text-xs truncate ${st.isCompleted ? 'text-emerald-400' : 'text-white'}`}>{st.name}</p>
-                             <p className={`${st.isCompleted ? 'text-emerald-500/60' : 'text-slate-500 group-hover:text-indigo-200'} text-[8px] font-bold`}>
+                             <p className={`font-black text-xs truncate ${st.isCompleted ? 'text-emerald-700' : 'text-slate-800 group-hover:text-white'}`}>{st.name}</p>
+                             <p className={`${st.isCompleted ? 'text-emerald-600' : 'text-slate-400 group-hover:text-indigo-200'} text-[8px] font-bold`}>
                                 {st.isCompleted ? 'تم الإنجاز ✓' : 'انقر للبدء'}
                              </p>
                           </div>
-                          <ChevronRight size={12} className={`${st.isCompleted ? 'text-emerald-500' : 'text-slate-600 group-hover:text-white'} transition-all transform group-hover:translate-x-0.5 shrink-0`} />
+                          <ChevronRight size={12} className={`${st.isCompleted ? 'text-emerald-600' : 'text-slate-400 group-hover:text-white'} transition-all transform group-hover:translate-x-0.5 shrink-0`} />
                        </motion.button>
                      ))
                    ) : (
                      <div className="col-span-full py-12 text-center">
-                        <p className="text-slate-500 font-bold text-xs">لم يتم العثور على طلاب في هذا الفصل</p>
+                        <p className="text-slate-400 font-bold text-xs">لم يتم العثور على طلاب في هذا الفصل</p>
                      </div>
                    )}
                 </div>

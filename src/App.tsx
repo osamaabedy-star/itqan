@@ -7,9 +7,16 @@ import {
   Tooltip, 
   ResponsiveContainer, 
   Cell,
-  CartesianGrid
+  CartesianGrid,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Legend
 } from 'recharts';
 import { Navbar } from './components/Navbar';
+import { SchoolLogo } from './components/SchoolLogo';
 import { ClassCard } from './components/ClassCard';
 import { INITIAL_DATA } from './constants';
 import { 
@@ -47,7 +54,9 @@ import {
   ArrowRight,
   Zap,
   TrendingUp,
-  FileText
+  FileText,
+  GraduationCap,
+  Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -64,6 +73,7 @@ import {
 } from 'firebase/firestore';
 import { firestoreService } from './services/firestoreService';
 import { User } from 'firebase/auth';
+import { auth } from './lib/firebase';
 import { Management } from './components/Management';
 import { QuizPlayer } from './components/QuizPlayer';
 import { Dashboard } from './components/Dashboard';
@@ -205,10 +215,27 @@ export default function App() {
   });
   const [evaluations, setEvaluations] = useState<Evaluations>({});
   const [loading, setLoading] = useState(true);
-  const [academicYear, setAcademicYear] = useState('2025-2026');
+  const [baseAcademicYear, setBaseAcademicYear] = useState('2025-2026');
+  const [activeTerm, setActiveTerm] = useState<'term1' | 'term2'>('term1');
+  const academicYear = `${baseAcademicYear}-${activeTerm}`;
+  const displayYear = baseAcademicYear;
   const [showStudentQuizPortal, setShowStudentQuizPortal] = useState(false);
   const [globalFilterTeacherId, setGlobalFilterTeacherId] = useState('');
   const [isTeacherReportMode, setIsTeacherReportMode] = useState(false);
+  const [studentReportSubjectId, setStudentReportSubjectId] = useState<string | null>(null);
+
+  const [previousTeacherView, setPreviousTeacherView] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('itqan-previous-teacher-view');
+      return saved || 'dashboard';
+    } catch {
+      return 'dashboard';
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('itqan-previous-teacher-view', previousTeacherView);
+  }, [previousTeacherView]);
 
   const [externalProfile, setExternalProfileState] = useState<ExternalProfile | null>(() => {
     try {
@@ -242,6 +269,7 @@ export default function App() {
   }, [studentSession]);
 
   const [loginRole, setLoginRole] = useState<'admin' | 'teacher' | 'supervisor' | 'student'>('student');
+  const [studentPortalTab, setStudentPortalTab] = useState<'quizzes' | 'reports'>('quizzes');
   const [loginIdInput, setLoginIdInput] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isLoginProcessing, setIsLoginProcessing] = useState(false);
@@ -257,7 +285,15 @@ export default function App() {
     setIsLoginProcessing(true);
     
     try {
-      await firestoreService.loginAnonymously();
+      // Attempt anonymous login but don't block if it fails since rules are now more permissive for reading
+      if (!auth.currentUser && loginRole !== 'admin') {
+        try {
+          await firestoreService.loginAnonymously();
+        } catch (authErr) {
+          console.warn('Anonymous auth failed, attempting to continue with public access:', authErr);
+        }
+      }
+
       const input = loginIdInput.trim();
       
       if (loginRole === 'teacher' || loginRole === 'supervisor') {
@@ -275,8 +311,25 @@ export default function App() {
           setLoginError('عذراً، رقم الهوية هذا غير مسجل في النظام');
         }
       } else if (loginRole === 'student') {
+        // Fetch students directly to avoid race condition with state population immediately after anonymous login
+        let studentsSnapshot: any[] = [];
+        try {
+          studentsSnapshot = await firestoreService.getCollection('students');
+        } catch (fetchErr: any) {
+          console.error('Students fetch failed:', fetchErr);
+          if (fetchErr.message?.includes('permission-denied')) {
+            setLoginError('تم رفض الوصول (Permission Denied). يرجى التأكد من إعدادات قواعد القراءة (Security Rules) في الفايربيس للسماح للمستخدمين بالوصول للطلاب.');
+          } else {
+            setLoginError('حدث خطأ أثناء الاتصال بالنظام. يرجى التحقق من اتصال الإنترنت الخاص بك.');
+          }
+          setIsLoginProcessing(false);
+          return;
+        }
+
+        const allStudents = studentsSnapshot as Student[];
+        
         // Find matching student by National ID, ID, or Name
-        const student = appData.students.find(s => 
+        const student = allStudents.find(s => 
           (s.nationalId && s.nationalId.trim() === input) ||
           s.id.toLowerCase() === input.toLowerCase() || 
           s.name.trim().toLowerCase() === input.toLowerCase() ||
@@ -291,9 +344,9 @@ export default function App() {
           setLoginError('لم يتم العثور على طالب برقم الهوية أو الاسم المدخل. يرجى التأكد من التسجيل أو كتابة البيانات بشكل صحيح.');
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setLoginError('حدث خطأ أثناء الاتصال بالنظام. يرجى المحاولة مرة أخرى.');
+      setLoginError('حدث خطأ غير متوقع أثناء الاتصال بالنظام. حاول مرة أخرى لاحقاً.');
     } finally {
       setIsLoginProcessing(false);
     }
@@ -471,8 +524,7 @@ export default function App() {
 
   // Sync all data from Firestore
   useEffect(() => {
-    if (!user) return;
-
+    // We allow subscription even if no user is signed in, as rules allow public read
     const sortByName = (arr: any[]) => [...arr].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 
     const subs = [
@@ -539,8 +591,27 @@ export default function App() {
   };
 
   const calculatePerformance = (classId: string, subjectId?: string) => {
-    const classStudents = appData.students.filter(s => s.classId === classId && !s.isArchived);
-    const cls = appData.classes.find(c => c.id === classId);
+    // If classId is provided, get students of that class.
+    // If classId is empty but subjectId is provided, find ALL students in ALL classes that take this subject.
+    const classStudents = classId 
+      ? appData.students.filter(s => s.classId === classId && !s.isArchived)
+      : (subjectId 
+          ? appData.students.filter(s => {
+              if (s.isArchived) return false;
+              const cls = appData.classes.find(c => c.id === s.classId);
+              if (!cls) return false;
+              const subject = appData.subjects.find(sub => sub.id === subjectId);
+              if (!subject) return false;
+              
+              // Check if subject belongs to student's grade and (optionally) specific class
+              const isGradeMatch = subject.gradeId === cls.gradeId;
+              const isClassMatch = !subject.classId || subject.classId === cls.id || (subject.classIds && subject.classIds.includes(cls.id));
+              
+              return isGradeMatch && isClassMatch;
+            })
+          : []);
+
+    const cls = classId ? appData.classes.find(c => c.id === classId) : null;
     let relevantSkills: Skill[] = [];
     let relevantQuizzes: Quiz[] = [];
     
@@ -548,7 +619,7 @@ export default function App() {
       const subject = appData.subjects.find(s => s.id === subjectId);
       if (subject) {
         relevantSkills = getSkillsForSubject(subject);
-        relevantQuizzes = appData.quizzes.filter(q => q.subjectIds?.includes(subjectId) && q.status === 'published');
+        relevantQuizzes = appData.quizzes.filter(q => (q.subjectIds?.includes(subjectId) || q.subjectId === subjectId) && q.status === 'published');
       }
     } else if (cls) {
       const classSubjects = appData.subjects.filter(sub => 
@@ -558,7 +629,7 @@ export default function App() {
       );
       classSubjects.forEach(sub => {
         relevantSkills = [...relevantSkills, ...getSkillsForSubject(sub)];
-        const subQuizzes = appData.quizzes.filter(q => q.subjectIds?.includes(sub.id) && q.status === 'published');
+        const subQuizzes = appData.quizzes.filter(q => (q.subjectIds?.includes(sub.id) || q.subjectId === sub.id) && q.status === 'published');
         subQuizzes.forEach(sq => {
           if (!relevantQuizzes.find(rq => rq.id === sq.id)) relevantQuizzes.push(sq);
         });
@@ -582,27 +653,29 @@ export default function App() {
 
     // Skill Points (0-4 scale)
     if (relevantSkills.length > 0) {
-      maxPoints += classStudents.length * relevantSkills.length * 4;
       classStudents.forEach(st => {
         relevantSkills.forEach(sk => {
           const evalData = evaluations[`${st.id}-${sk.id}-${academicYear}`];
           const score = evalData?.score;
-          if (score === 'mastered') totalPoints += 4;
-          else if (score === 'advanced') totalPoints += 3;
-          else if (score === 'accepted') totalPoints += 2;
-          else if (score === 'weak') totalPoints += 1;
-          else if (score === 'very-weak') totalPoints += 0;
+          if (score) {
+            maxPoints += 4;
+            if (score === 'mastered') totalPoints += 4;
+            else if (score === 'advanced') totalPoints += 3;
+            else if (score === 'accepted') totalPoints += 2;
+            else if (score === 'weak') totalPoints += 1;
+            else if (score === 'very-weak') totalPoints += 0;
+          }
         });
       });
     }
 
     // Quiz Points (Scale 100 to 4 for weighted average)
     if (relevantQuizzes.length > 0) {
-      maxPoints += classStudents.length * relevantQuizzes.length * 4;
       classStudents.forEach(st => {
         relevantQuizzes.forEach(qz => {
           const result = appData.quizResults.find(r => r.studentId === st.id && r.quizId === qz.id);
-          if (result) {
+          if (result && result.score !== undefined) {
+            maxPoints += 4;
             totalPoints += (result.score / 100) * 4;
           }
         });
@@ -638,14 +711,19 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center" dir="rtl">
+      <div className="min-h-screen bg-[#faf9f6] flex items-center justify-center sm:p-4" dir="rtl">
         <motion.div 
-          animate={{ scale: [1, 1.1, 1] }} 
-          transition={{ repeat: Infinity, duration: 1.5 }}
-          className="flex flex-col items-center gap-4"
+          animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }} 
+          transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}
+          className="flex flex-col items-center gap-5"
         >
-          <ShieldCheck className="text-indigo-600 w-12 h-12" />
-          <p className="font-black text-indigo-900 animate-pulse">جاري تحميل النظام...</p>
+          <SchoolLogo size={120} showText={false} imageUrl={appData?.settings?.[0]?.schoolLogoUrl} />
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#7a1c22] animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-2 h-2 rounded-full bg-[#e68824] animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-2 h-2 rounded-full bg-[#7a1c22] animate-bounce" style={{ animationDelay: '300ms' }} />
+          </div>
+          <p className="font-bold text-[13px] text-[#7a1c22] tracking-wide animate-pulse">جاري تحميل منصة إتقان...</p>
         </motion.div>
       </div>
     );
@@ -660,87 +738,68 @@ export default function App() {
 
   if (showLogin) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans p-4 relative overflow-hidden" dir="rtl">
-        {/* Soft Background Blur Blobs */}
-        <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] bg-indigo-100 rounded-full blur-[120px] opacity-70 pointer-events-none" />
-        <div className="absolute bottom-[-20%] left-[-20%] w-[60%] h-[60%] bg-blue-50 rounded-full blur-[120px] opacity-70 pointer-events-none" />
+      <div className="min-h-screen bg-[#faf9f6]/95 flex flex-col items-center justify-center font-sans p-4 relative overflow-hidden" dir="rtl">
+        {/* Soft atmospheric radial gradients with school brand palette */}
+        <div className="absolute top-[-30%] right-[-10%] w-[70%] h-[70%] rounded-full bg-[#fce8e6] opacity-60 blur-[130px] pointer-events-none" />
+        <div className="absolute bottom-[-30%] left-[-10%] w-[70%] h-[70%] rounded-full bg-[#fef5e7] opacity-60 blur-[130px] pointer-events-none" />
+        
+        {/* Delicate geometric background patterns */}
+        <div className="absolute inset-0 bg-transparent opacity-[0.02] pointer-events-none" style={{ 
+          backgroundImage: 'radial-gradient(#7a1c22 1px, transparent 0)', 
+          backgroundSize: '24px 24px' 
+        }} />
 
+        {/* Centralized High-Contrast Elegant Card */}
         <motion.div 
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="w-full max-w-md bg-white rounded-[2.5rem] border border-slate-100 shadow-[0_25px_60px_-15px_rgba(99,102,241,0.06)] p-8 md:p-10 relative z-10"
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[2.5rem] border border-[#7a1c22]/10 shadow-[0_40px_90px_-20px_rgba(122,28,34,0.08)] p-8 md:p-10 relative z-10 shrink-0"
         >
-          {/* School Identity Header */}
-          <div className="flex flex-col items-center text-center space-y-4 mb-8">
-            <div className={`w-20 h-20 rounded-[2rem] ${appData.settings?.[0]?.schoolLogoUrl ? '' : 'bg-indigo-50 border border-indigo-100'} flex items-center justify-center text-indigo-700 shadow-sm overflow-hidden`}>
-              {appData.settings?.[0]?.schoolLogoUrl ? (
-                <img src={appData.settings?.[0]?.schoolLogoUrl} alt="Logo" className="w-full h-full object-cover" />
-              ) : (
-                <svg className="w-12 h-12 text-indigo-700" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M50 5C75 5 85 20 85 45C85 70 65 90 50 95C35 90 15 70 15 45C15 20 25 5 50 5Z" fill="currentColor" fillOpacity="0.06" stroke="currentColor" strokeWidth="4" strokeLinejoin="round"/>
-                  <path d="M32 60C45 60 50 48 50 48C50 48 55 60 68 60" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M32 40C45 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                  <path d="M68 40C55 40 50 48 50 48V68" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                  <path d="M50 18L52.5 24H58.5L53.5 27.5L55.5 33L50 29.5L44.5 33L46.5 27.5L41.5 24H47.5L50 18Z" fill="#FBBF24"/>
-                </svg>
-              )}
-            </div>
-            
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase tracking-widest text-indigo-600/70 font-black">مدارس رياض الإبداع الأهلية</span>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">منصة إتقان لتقييم المهارات</h1>
-            </div>
+          {/* Aesthetic symmetrical corner dots */}
+          <div className="absolute top-6 right-6 w-2.5 h-2.5 rounded-full bg-[#7a1c22]/10" />
+          <div className="absolute top-6 left-6 w-2.5 h-2.5 rounded-full bg-[#e68824]/15" />
+
+          {/* School & Platform Identity Header */}
+          <div className="flex flex-col items-center text-center space-y-2 mb-8 select-none">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1, duration: 0.5 }}
+              className="relative p-1 rounded-full bg-gradient-to-b from-[#7a1c22]/5 to-[#e68824]/5 border border-[#7a1c22]/5 mb-1"
+            >
+              <SchoolLogo size={110} showText={true} imageUrl={appData.settings?.[0]?.schoolLogoUrl} />
+            </motion.div>
+            <div className="h-[1px] w-20 bg-gradient-to-r from-transparent via-[#7a1c22]/20 to-transparent mt-1" />
+            <span className="text-[11px] font-black tracking-wide text-slate-400 mt-1">منصة إتقان لتقييم المهارات</span>
           </div>
 
-          {/* Job / Role Tabs Selector */}
-          <div className="bg-slate-50 border border-slate-100 p-1.5 rounded-2xl flex flex-wrap gap-1 items-center justify-between mb-8">
-            {(['student', 'teacher', 'supervisor', 'admin'] as const).map((role) => {
-              const labelMap = {
-                student: 'دخول طالب',
-                teacher: 'معلّم',
-                supervisor: 'مشرف',
-                admin: 'مسؤول'
-              };
-              
-              const isActive = loginRole === role;
-              
-              return (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => {
-                    setLoginRole(role);
-                    setLoginIdInput('');
-                    setLoginError('');
-                  }}
-                  className={`flex-1 min-w-[70px] h-10 rounded-xl text-xs font-black transition-all ${
-                    isActive 
-                      ? 'bg-slate-900 text-white shadow-md' 
-                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
+          {/* Login view split by role */}
+          {loginRole === 'admin' ? (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="space-y-6"
+            >
+              {/* Clean Simple Admin Identifier */}
+              <div className="text-center">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 text-[10px] font-black border border-amber-500/20">
+                  <ShieldCheck size={12} /> بوابة الإدارة العليا
+                </span>
+              </div>
+
+              {loginError && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-2.5 text-rose-700 text-xs font-bold leading-relaxed"
                 >
-                  {labelMap[role]}
-                </button>
-              );
-            })}
-          </div>
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <span>{loginError}</span>
+                </motion.div>
+              )}
 
-          {/* Form Actions Section */}
-          <form onSubmit={handleUnifiedLoginSubmit} className="space-y-6">
-            {loginError && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-2.5 text-rose-700 text-xs font-bold leading-relaxed-none"
-              >
-                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                <span>{loginError}</span>
-              </motion.div>
-            )}
-
-            {loginRole === 'admin' ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <button
                   type="button"
                   onClick={async () => {
@@ -749,55 +808,153 @@ export default function App() {
                     try {
                       await firestoreService.login();
                     } catch (err) {
-                      setLoginError('فشل تسجيل الدخول كمسؤول. الرجاء تكرار المحاولة وسوف نساعدك.');
+                      setLoginError('فشل تسجيل الدخول كمسؤول. الرجاء تكرار المحاولة.');
                     } finally {
                       setIsLoginProcessing(false);
                     }
                   }}
                   disabled={isLoginProcessing}
-                  className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-transform active:scale-[0.98] disabled:opacity-50"
-                >
-                  <LogIn size={18} />
-                  <span>دخول كمسؤول بالنظام (Google Auth)</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-700 block mr-1 text-right">
-                    {loginRole === 'student' ? 'رقم الهوية الشخصية للطالب' : 'أدخل رقم الهوية الشخصية'}
-                  </label>
-                  <input
-                    type="text"
-                    value={loginIdInput}
-                    onChange={(e) => setLoginIdInput(e.target.value)}
-                    placeholder={
-                      loginRole === 'student' 
-                        ? 'أدخل رقم الهوية الوطنية للطالب للدخول...' 
-                        : 'أدخل رقم الهوية المسجل...'
-                    }
-                    className="w-full h-14 px-4 bg-slate-50 border border-slate-100 focus:border-indigo-400 focus:bg-white rounded-2xl outline-none text-slate-800 text-sm font-bold transition-all text-right shadow-inner"
-                    disabled={isLoginProcessing}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoginProcessing}
-                  className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-transform active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-indigo-600/10"
+                  className="w-full h-14 bg-gradient-to-r from-[#7a1c22] to-[#8c1d27] hover:brightness-110 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-3 shadow-lg shadow-[#7a1c22]/15 hover:shadow-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                 >
                   {isLoginProcessing ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     <>
-                      <LogIn size={18} />
-                      <span>تسجيل الدخول</span>
+                      <ShieldCheck size={18} className="text-amber-300" />
+                      <span>تسجيل الدخول كمسؤول (Google Workspace)</span>
                     </>
                   )}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginRole('student');
+                    setLoginIdInput('');
+                    setLoginError('');
+                  }}
+                  className="w-full h-12 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-xl font-bold text-[11px] flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span>العودة لمنصة الدخول العامة للطلاب والمعلمين</span>
+                </button>
               </div>
-            )}
-          </form>
+            </motion.div>
+          ) : (
+            <div className="space-y-6">
+              {/* Category Role Tabs */}
+              <div className="bg-slate-100 p-1 rounded-xl grid grid-cols-3 gap-1.5 border border-slate-200/50">
+                {(['student', 'teacher', 'supervisor'] as const).map((role) => {
+                  const labelMap = {
+                    student: 'طالب / ولي أمر',
+                    teacher: 'معلم معتمد',
+                    supervisor: 'مشرف'
+                  };
+                  
+                  const iconMap = {
+                    student: <GraduationCap size={15} />,
+                    teacher: <BookOpen size={15} />,
+                    supervisor: <TrendingUp size={15} />
+                  };
+                  
+                  const isActive = loginRole === role;
+                  
+                  return (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => {
+                        setLoginRole(role);
+                        setLoginIdInput('');
+                        setLoginError('');
+                      }}
+                      className={`flex flex-col items-center justify-center gap-1.5 py-2.5 px-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                        isActive 
+                          ? 'bg-[#7a1c22] text-white shadow-md' 
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                      }`}
+                    >
+                      <span className={`${isActive ? 'text-white' : 'text-[#7a1c22]'}`}>{iconMap[role]}</span>
+                      <span>{labelMap[role]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <form onSubmit={handleUnifiedLoginSubmit} className="space-y-6">
+                {loginError && (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-2.5 text-rose-700 text-xs font-bold leading-relaxed"
+                  >
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                    <span>{loginError}</span>
+                  </motion.div>
+                )}
+
+                <div className="space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black text-[#7a1c22] block mr-1 text-right">
+                      {loginRole === 'student' ? 'رقم الهوية الوطنية للطالب / السجل' : 'رقم الهوية الوطنية للموظف'}
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={loginIdInput}
+                        onChange={(e) => setLoginIdInput(e.target.value)}
+                        placeholder={
+                          loginRole === 'student' 
+                            ? 'أدخل رقم الهوية لمتابعة المهارات والتحصيل...' 
+                            : 'أدخل رقم هوية الموظف المقترنة بحسابك...'
+                        }
+                        className="w-full h-14 pl-4 pr-11 bg-slate-50 border border-slate-200/80 focus:border-[#7a1c22] focus:bg-white rounded-2xl outline-none text-slate-800 text-xs font-bold transition-all text-right shadow-inner focus:ring-2 focus:ring-[#7a1c22]/5"
+                        disabled={isLoginProcessing}
+                      />
+                      <div className="absolute right-4 text-[#7a1c22]/60">
+                        <Key size={16} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoginProcessing}
+                    className="w-full h-14 bg-gradient-to-r from-[#7a1c22] to-[#e68824] hover:brightness-110 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-[#7a1c22]/15 cursor-pointer"
+                  >
+                    {isLoginProcessing ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <LogIn size={16} />
+                        <span>تحقق وتسجيل دخول آمن للمنصة</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {/* Secure switch for Admin login at bottom */}
+              <div className="pt-4 border-t border-slate-100 flex flex-col items-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginRole('admin');
+                    setLoginIdInput('');
+                    setLoginError('');
+                  }}
+                  className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-black rounded-lg flex items-center gap-2 transition-all hover:scale-[1.01] cursor-pointer"
+                >
+                  <ShieldCheck size={14} className="text-[#e68824]" />
+                  <span>بوابة الإدارة العليا والتدقيق</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Simple Institutional footer */}
+          <div className="mt-8 text-center text-[10px] font-bold text-slate-400 select-none">
+             مدارس رياض الإبداع الأهلية - تحت إشراف وزارة التعليم
+          </div>
         </motion.div>
       </div>
     );
@@ -812,15 +969,18 @@ export default function App() {
             <Navbar 
               activeView={view} 
               onNavigate={setView} 
-              academicYear={academicYear} 
-              onTeacherChange={setGlobalFilterTeacherId}
+              academicYear={displayYear} 
+              onYearChange={setBaseAcademicYear} 
+              activeTerm={activeTerm}
+              onTermChange={setActiveTerm}
               teachers={appData.teachers.filter(t => !t.isArchived)}
               selectedTeacherId={globalFilterTeacherId}
-              onYearChange={setAcademicYear} 
+              onTeacherChange={setGlobalFilterTeacherId}
               theme={theme}
               onThemeChange={setTheme}
               onGoBack={handleGoBack}
               canGoBack={navHistory.length > 0}
+              schoolLogoUrl={appData.settings?.[0]?.schoolLogoUrl}
             />
           </div>
         )}
@@ -832,13 +992,15 @@ export default function App() {
               data={appData} 
               evaluations={evaluations}
               academicYear={academicYear}
+              activeTerm={activeTerm}
               onNavigate={setView}
               onSelectClass={setSelectedClass}
               onSelectStudent={setSelectedStudent}
-              onSelectTeacher={(t) => { setSelectedTeacher(t); setView('teacher-profile'); }}
+              onSelectTeacher={(t) => { setSelectedTeacher(t); setPreviousTeacherView('dashboard'); setView('teacher-profile'); }}
               onSelectQuiz={(q, st) => { setSelectedQuiz(q); setSelectedStudent(st); setView(st ? 'quiz' : 'quiz-report'); }}
               calculatePerformance={calculatePerformance}
               filterTeacherId={globalFilterTeacherId}
+              onFilterTeacherChange={setGlobalFilterTeacherId}
             />
           )}
 
@@ -847,6 +1009,7 @@ export default function App() {
               data={appData}
               evaluations={evaluations}
               academicYear={academicYear}
+              activeTerm={activeTerm}
             />
           )}
 
@@ -855,6 +1018,7 @@ export default function App() {
                data={appData}
                evaluations={evaluations}
                academicYear={academicYear}
+               activeTerm={activeTerm}
                onClose={() => {
                  setExternalProfileState(null);
                  setView('login');
@@ -870,166 +1034,435 @@ export default function App() {
             <div className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-6 font-sans" dir="rtl">
               <div className="max-w-4xl mx-auto space-y-4">
                 {/* Header Card */}
-                <div className="bg-gradient-to-l from-indigo-700 to-indigo-900 rounded-2xl p-5 md:p-6 text-white relative overflow-hidden shadow-xl">
-                  <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[150%] bg-white/[0.04] rounded-full blur-[60px] pointer-events-none" />
-                  <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-3">
-                      {/* Shield Icon & School Title */}
-                      <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md">
-                          <BookOpen className="text-white w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-white/60 text-[10px] font-black uppercase leading-none">مدارس رياض الإبداع</p>
-                          <h2 className="text-xs font-black text-yellow-300 mt-1">منصة إتقان لتقييم المهارات</h2>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-0.5">
-                        <p className="text-white/60 text-[10px] font-bold text-indigo-200">مرحباً بك يا بطل المستقبل 🏆</p>
-                        <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">{studentSession.name}</h1>
-                      </div>
-                      
-                      {/* Class name / Grade Info */}
-                      {(() => {
-                        const sClass = appData.classes.find(c => c.id === studentSession.classId);
-                        const sGrade = sClass ? appData.grades.find(g => g.id === sClass.gradeId) : null;
-                        return (
-                          <div className="inline-flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-full text-[10px] font-bold backdrop-blur-md text-indigo-100">
-                            <span>{sGrade?.name || 'الصف الدراسي'}</span>
-                            <span className="w-1 h-1 rounded-full bg-yellow-400"></span>
-                            <span>الفصل: {sClass?.name || 'أ'}</span>
-                          </div>
-                        );
-                      })()}
+                <div className="bg-white rounded-3xl p-6 text-slate-800 shadow-sm border border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="p-1 border border-slate-100 rounded-2xl bg-[#faf9f6] shrink-0">
+                      <SchoolLogo size={70} showText={false} imageUrl={appData.settings?.[0]?.schoolLogoUrl} />
                     </div>
-                    
-                    {/* Logout button */}
-                    <button 
-                      onClick={() => {
-                        setStudentSession(null);
-                        setShowStudentQuizPortal(false);
-                        setView('login');
-                      }}
-                      className="px-4 h-10 bg-white/10 hover:bg-rose-600 hover:text-white text-indigo-100 rounded-xl text-xs font-black flex items-center justify-center gap-2 backdrop-blur-md transition-all self-start md:self-center"
-                    >
-                      <LogOut size={16} />
-                      <span>تسجيل الخروج</span>
-                    </button>
+                    <div className="space-y-0.5">
+                      <h1 className="text-xl font-black text-slate-900">{studentSession.name}</h1>
+                      <div className="flex items-center gap-3 text-slate-500 text-[10px] font-bold">
+                         <span>{appData.grades.find(g => g.id === appData.classes.find(c => c.id === studentSession.classId)?.gradeId)?.name || 'الصف'}</span>
+                         <span>|</span>
+                         <span>الفصل: {appData.classes.find(c => c.id === studentSession.classId)?.name || 'أ'}</span>
+                         <span>|</span>
+                         <span>{displayYear}</span>
+                      </div>
+                    </div>
                   </div>
+                    
+                  {/* Logout button */}
+                  <button 
+                    onClick={() => {
+                      setStudentSession(null);
+                      setShowStudentQuizPortal(false);
+                      setView('login');
+                    }}
+                    className="px-4 h-9 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all mr-auto sm:mr-0"
+                  >
+                    <LogOut size={14} />
+                    <span>خروج</span>
+                  </button>
                 </div>
 
-                {/* Available Quizzes Section */}
+                {/* Available Quizzes & Reports Tabs */}
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xl font-black text-slate-900">📝 الاختبارات والمهام النشطة</h3>
-                      <p className="text-xs text-slate-500 font-bold mt-1">الرجاء إكمال الاختبارات المطلوبة منك بدقة وإتقان</p>
-                    </div>
+                  <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm w-fit">
+                    <button 
+                      onClick={() => setStudentPortalTab('quizzes')}
+                      className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${studentPortalTab === 'quizzes' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                      الاختبارات
+                    </button>
+                    <button 
+                      onClick={() => setStudentPortalTab('reports')}
+                      className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${studentPortalTab === 'reports' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                      تقاريري
+                    </button>
                   </div>
 
-                  {(() => {
-                    const sClass = appData.classes.find(c => c.id === studentSession.classId);
-                    const sGrade = sClass ? appData.grades.find(g => g.id === sClass.gradeId) : null;
-                    
-                    const availableQuizzes = appData.quizzes.filter(q => {
-                      if (q.isArchived || q.status !== 'published') return false;
+                  {studentPortalTab === 'quizzes' ? (
+                    (() => {
+                      const sClass = appData.classes.find(c => c.id === studentSession.classId);
+                      const sGrade = sClass ? appData.grades.find(g => g.id === sClass.gradeId) : null;
                       
-                      // 1. If class specific assignments exist, must match
-                      if (q.classIds && q.classIds.length > 0) {
-                        return q.classIds.includes(studentSession.classId);
-                      }
-                      
-                      // 2. Fallback to Grade matches
-                      if (q.gradeId && sGrade) {
-                        return q.gradeId === sGrade.id;
-                      }
-                      
-                      // 3. Fallback to Stage matches
-                      if (q.stageId && sGrade) {
-                        return q.stageId === sGrade.stage;
-                      }
-                      
-                      return false;
-                    });
+                      const availableQuizzes = appData.quizzes.filter(q => {
+                        if (q.isArchived || q.status !== 'published') return false;
+                        
+                        // 1. If class specific assignments exist, must match
+                        if (q.classIds && q.classIds.length > 0) {
+                          return q.classIds.includes(studentSession.classId);
+                        }
+                        
+                        // 2. Fallback to Grade matches
+                        if (q.gradeId && sGrade) {
+                          return q.gradeId === sGrade.id;
+                        }
+                        
+                        // 3. Fallback to Stage matches
+                        if (q.stageId && sGrade) {
+                          return q.stageId === sGrade.stage;
+                        }
+                        
+                        return false;
+                      });
 
-                    if (availableQuizzes.length === 0) {
+                      if (availableQuizzes.length === 0) {
+                        return (
+                          <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 space-y-4">
+                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+                              <CheckCircle2 size={32} />
+                            </div>
+                            <div>
+                              <h4 className="text-lg font-black text-slate-800">لا توجد اختبارات نشطة حالياً</h4>
+                              <p className="text-slate-400 text-xs mt-1">أنت متميز ومتقن لجميع المهارات المطلوبة منك!</p>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
-                        <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 space-y-4">
-                          <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
-                            <CheckCircle2 size={32} />
-                          </div>
-                          <div>
-                            <h4 className="text-lg font-black text-slate-800">لا توجد اختبارات نشطة حالياً</h4>
-                            <p className="text-slate-400 text-xs mt-1">أنت متميز ومتقن لجميع المهارات المطلوبة منك!</p>
-                          </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {availableQuizzes.map(quiz => {
+                            // Check if quiz is already solved
+                            const result = appData.quizResults?.find(r => r.studentId === studentSession.id && r.quizId === quiz.id);
+                            const isCompleted = !!result;
+                            
+                            return (
+                              <div 
+                                key={quiz.id} 
+                                className={`bg-white rounded-2xl p-4 border transition-all duration-300 flex flex-col justify-between h-32 ${
+                                  isCompleted 
+                                  ? 'border-emerald-100 bg-emerald-50/10' 
+                                  : 'border-slate-100 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-500/5'
+                                }`}
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="inline-flex items-center gap-1.5 px-2 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold">
+                                      {appData.subjects.find(s => quiz.subjectIds?.includes(s.id) || quiz.subjectId === s.id)?.name || quiz.subjectName || 'مادة'}
+                                    </span>
+                                    {isCompleted && (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full text-[10px] font-black">
+                                        <CheckCircle2 size={12} />
+                                        {result.score}%
+                                      </span>
+                                    )}
+                                  </div>
+                                  
+                                  <h4 className="text-sm font-black text-slate-900 line-clamp-1">{quiz.title}</h4>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-bold">
+                                  {isCompleted ? 'لقد أكملت هذا التقييم' : 'بانتظار تنفيذ المشرف'}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       );
-                    }
-
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {availableQuizzes.map(quiz => {
-                          // Check if quiz is already solved
-                          const result = appData.quizResults?.find(r => r.studentId === studentSession.id && r.quizId === quiz.id);
-                          const isCompleted = !!result;
-                          
-                          return (
-                            <div 
-                              key={quiz.id} 
-                              className={`bg-white rounded-2xl p-4 border transition-all duration-300 flex flex-col justify-between h-40 ${
-                                isCompleted 
-                                ? 'border-emerald-100 bg-emerald-50/10' 
-                                : 'border-slate-100 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-500/5'
-                              }`}
-                            >
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="inline-flex items-center gap-1.5 px-2 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold">
-                                    <BookOpen size={12} />
-                                    {quiz.subjectName || 'مادة دراسية'}
-                                  </span>
-                                  {isCompleted ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full text-[10px] font-black">
-                                      <CheckCircle2 size={12} />
-                                      {result.score}% تم الحل
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-600 border border-amber-100 rounded-full text-[10px] font-black animate-pulse">
-                                      مستمر حالياً
-                                    </span>
-                                  )}
-                                </div>
-                                
-                                <h4 className="text-base font-black text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">{quiz.title}</h4>
-                                <p className="text-[10px] text-slate-400 font-bold">عدد الأسئلة: {quiz.questions.length} أسئلة مهارية</p>
-                              </div>
-
-                              {isCompleted ? (
-                                <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-                                  <span className="text-[10px] font-bold text-slate-400">لقد أكملت هذا التقييم</span>
-                                  <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                                    <CheckCircle2 size={16} />
-                                  </div>
-                                </div>
-                              ) : (
-                                <button 
-                                  onClick={() => {
-                                    setSelectedQuiz(quiz);
-                                    setSelectedStudent(studentSession);
-                                    setView('quiz');
-                                  }}
-                                  className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
-                                >
-                                  <span>ابدأ الاختبار الآن 🚀</span>
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
+                    })()
+                  ) : (
+                    /* Detailed Professional Student Report */
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                           <div>
+                             <h4 className="text-xs font-black text-slate-400 uppercase mb-2">متوسط الأداء</h4>
+                             <p className="text-3xl font-black text-indigo-600">
+                               {(() => {
+                                 const results = appData.quizResults?.filter(r => r.studentId === studentSession.id) || [];
+                                 if (results.length === 0) return '0%';
+                                 
+                                 const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
+                                 const studentSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);                
+                                 const subjectAverages = studentSubjects.map(sub => {
+                                     const subResults = results.filter(r => {
+                                         const quiz = appData.quizzes.find(q => q.id === r.quizId);
+                                         return quiz?.subjectIds?.includes(sub.id);
+                                     });
+                                     return subResults.length > 0 ? subResults.reduce((a, b) => a + b.score, 0) / subResults.length : null;
+                                 }).filter(avg => avg !== null) as number[];
+                                 
+                                 const avg = subjectAverages.length > 0 ? subjectAverages.reduce((a, b) => a + b, 0) / subjectAverages.length : 0;
+                                 return `${Math.round(avg)}%`;
+                               })()}
+                             </p>
+                           </div>
+                        </div>
+                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                           <div>
+                             <h4 className="text-xs font-black text-slate-400 uppercase mb-2">الاختبارات المكتملة</h4>
+                             <p className="text-3xl font-black text-emerald-600">
+                               {appData.quizResults?.filter(r => r.studentId === studentSession.id).length || 0}
+                             </p>
+                           </div>
+                        </div>
+                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                           <div>
+                             <h4 className="text-xs font-black text-slate-400 uppercase mb-2">المهارات المنجزة</h4>
+                             <p className="text-3xl font-black text-amber-600">
+                               {(() => {
+                                 const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
+                                 const studentSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
+                                 let masteredCount = 0;
+                                 studentSubjects.forEach(sub => {
+                                   getSkillsForSubject(sub).forEach(sk => {
+                                     const evalKey = `${studentSession.id}-${sk.id}-${studentSession.academicYear || academicYear}`;
+                                     const evaluation = evaluations[evalKey];
+                                     if (evaluation?.score === 'mastered') {
+                                       masteredCount++;
+                                     }
+                                   });
+                                 });
+                                 return masteredCount;
+                               })()}
+                             </p>
+                           </div>
+                        </div>
                       </div>
-                    );
-                  })()}
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                           <h3 className="text-xs font-black text-slate-800 mb-6 uppercase">مستوى الأداء في المواد</h3>
+                           <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={(() => {
+                              // Filter subjects for this specific student's grade
+                              const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
+                              const allSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
+                              // Ensure unique subject names
+                              const studentSubjects = Array.from(new Map<string, Subject>(allSubjects.map(item => [item.name, item])).values());
+                              
+                              const classStudents = appData.students.filter(s => s.classId === studentSession.classId);
+                              
+                              return studentSubjects.map(sub => {
+                                // Student Avg
+                                const results = appData.quizResults?.filter(r => {
+                                  const quiz = appData.quizzes.find(q => q.id === r.quizId);
+                                  return r.studentId === studentSession.id && (quiz?.subjectIds?.includes(sub.id) || quiz?.subjectId === sub.id);
+                                }) || [];
+                                const avg = results.length > 0 ? results.reduce((a, b) => a + b.score, 0) / results.length : 0;
+
+                                // Class Avg
+                                const classResults = appData.quizResults?.filter(r => {
+                                    const quiz = appData.quizzes.find(q => q.id === r.quizId);
+                                    return classStudents.find(st => st.id === r.studentId) && (quiz?.subjectIds?.includes(sub.id) || quiz?.subjectId === sub.id);
+                                }) || [];
+                                const classAvg = classResults.length > 0 ? classResults.reduce((a, b) => a + b.score, 0) / classResults.length : 0;
+                                
+                                return { name: sub.name, score: avg, classAverage: classAvg };
+                              });
+                            })()}>
+                               <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                               <XAxis dataKey="name" fontSize={10} fontFamily="sans-serif" fontWeight="bold" />
+                               <YAxis domain={[0, 100]} fontSize={10} fontFamily="sans-serif" />
+                               <Tooltip 
+                                  formatter={(value: number) => [`${Math.round(value)}%`, 'النسبة']}
+                                  labelStyle={{ fontFamily: 'sans-serif', fontWeight: 'bold' }}
+                               />
+                               <Legend />
+                               <Bar dataKey="score" name="أداؤك" fill="#6366f1" radius={4} />
+                               <Bar dataKey="classAverage" name="متوسط الفصل" fill="#cbd5e1" radius={4} />
+                             </BarChart>
+                           </ResponsiveContainer>
+                        </div>
+                        
+                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                            <h3 className="text-xs font-black text-slate-800 mb-6 uppercase">قائمة المواد والمعلمين</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {(() => {
+                                    const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
+                                    const allSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
+                                    const uniqueSubjects = Array.from(new Map<string, Subject>(allSubjects.map(item => [item.name, item])).values());
+                                    
+                                    return uniqueSubjects.map(s => {
+                                        const teacher = appData.teachers.find(t => t.id === s.teacherId);
+                                        const results = appData.quizResults?.filter(r => {
+                                            const quiz = appData.quizzes.find(q => q.id === r.quizId);
+                                            return r.studentId === studentSession.id && quiz?.subjectIds?.includes(s.id);
+                                        }) || [];
+                                        const avg = results.length > 0 ? Math.round(results.reduce((a, b) => a + b.score, 0) / results.length) : 0;
+                                        
+                                        return (
+                                            <div key={s.id} className="p-4 bg-slate-50 rounded-2xl space-y-2 border border-slate-100">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs font-black text-slate-800">{s.name}</span>
+                                                    <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{avg}%</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-500 block">المعلم: {teacher?.name || 'غير محدد'}</span>
+                                            </div>
+                                        )
+                                    });
+                                })()}
+                            </div>
+                        </div>
+                      </div>
+
+                      {/* Professional Skills Assessment and Teacher Guidance Section */}
+                      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
+                              <BrainCircuit className="w-5 h-5 text-indigo-600" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-black text-slate-800">تقرير المهارات والملاحظات التوجيهية</h3>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                استعراض المظهر المعرفي والتوجيه السلوكي والأكاديمي لكل مادة
+                              </p>
+                            </div>
+                          </div>
+                   
+                          {/* Total skills overview tracker */}
+                          {(() => {
+                             const studentGradeId = appData.classes.find(c => c.id === studentSession.id || c.id === studentSession.classId)?.gradeId;
+                             const studentSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
+                             let totalSkills = 0;
+                             let assessedSkills = 0;
+                             studentSubjects.forEach(sub => {
+                               const skills = getSkillsForSubject(sub);
+                               totalSkills += skills.length;
+                               skills.forEach(sk => {
+                                 const evalKey = `${studentSession.id}-${sk.id}-${studentSession.academicYear || academicYear}`;
+                                 if (evaluations[evalKey]?.score) {
+                                   assessedSkills++;
+                                 }
+                               });
+                             });
+                             return (
+                               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full text-[10px] font-bold text-slate-500">
+                                 <span>تم رصد:</span>
+                                 <span className="font-extrabold text-indigo-600">{assessedSkills}</span>
+                                 <span>من أصل</span>
+                                 <span className="font-extrabold text-slate-700">{totalSkills}</span>
+                                 <span>مهارات</span>
+                               </div>
+                             );
+                          })()}
+                        </div>
+
+                        {/* Subject Selector Tabs */}
+                        {(() => {
+                            const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
+                            const allSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
+                            const studentSubjects = Array.from(new Map<string, Subject>(allSubjects.map(item => [item.name, item])).values());
+                            
+                            if (studentSubjects.length === 0) {
+                              return (
+                                <div className="text-center py-10 text-slate-400 font-bold text-xs">
+                                  لم يتم العثور على مواد مسجلة لهذا الصف الدراسي.
+                                </div>
+                              );
+                            }
+                            
+                            const activeSub = studentSubjects.find(s => s.id === studentReportSubjectId) || studentSubjects[0];
+                            const subjectSkills = getSkillsForSubject(activeSub);
+                            
+                            const scoreMap: Record<string, { label: string; badge: string; border: string }> = {
+                                mastered: { label: 'متقن', badge: 'text-emerald-700 bg-emerald-50 border-emerald-100', border: 'border-emerald-200' },
+                                advanced: { label: 'متقدم', badge: 'text-indigo-700 bg-indigo-50 border-indigo-100', border: 'border-indigo-200' },
+                                accepted: { label: 'مقبول', badge: 'text-cyan-700 bg-cyan-50 border-cyan-100', border: 'border-cyan-200' },
+                                weak: { label: 'ضعيف', badge: 'text-amber-700 bg-amber-50 border-amber-100', border: 'border-amber-200' },
+                                'very-weak': { label: 'ضعيف جداً', badge: 'text-rose-700 bg-rose-50 border-rose-100', border: 'border-rose-200' }
+                            };
+
+                            return (
+                              <div className="space-y-6">
+                                <div className="flex flex-wrap gap-2 pb-1 border-b border-slate-100">
+                                  {studentSubjects.map(sub => {
+                                     const isActive = activeSub.id === sub.id;
+                                     const skills = getSkillsForSubject(sub);
+                                     const assessed = skills.filter(sk => evaluations[`${studentSession.id}-${sk.id}-${academicYear}`]?.score).length;
+                                     
+                                     return (
+                                       <button 
+                                         key={sub.id} 
+                                         onClick={() => setStudentReportSubjectId(sub.id)}
+                                         className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                                           isActive 
+                                             ? 'bg-indigo-600 text-white shadow-sm' 
+                                             : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-100'
+                                         }`}
+                                       >
+                                         <span>{sub.name}</span>
+                                         <span className={`text-[9px] px-1.5 py-0.5 rounded-md ${isActive ? 'bg-indigo-700 text-indigo-105' : 'bg-slate-200/80 text-slate-500'}`}>
+                                            {assessed}/{skills.length}
+                                         </span>
+                                       </button>
+                                     );
+                                  })}
+                                </div>
+
+                                {subjectSkills.length === 0 ? (
+                                   <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
+                                     <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-350">
+                                       <Award className="w-6 h-6 text-slate-300" />
+                                     </div>
+                                     <p className="text-xs font-bold text-slate-400">لا توجد مهارات رصد مسجلة لهذه المادة حالياً.</p>
+                                   </div>
+                                ) : (
+                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                     {subjectSkills.map(skill => {
+                                        const evalKey = `${studentSession.id}-${skill.id}-${academicYear}`;
+                                        const scoreValue = evaluations[evalKey];
+                                        const scoreStyle = scoreValue?.score ? scoreMap[scoreValue.score] : null;
+
+                                        return (
+                                          <div key={skill.id} className="p-5 bg-slate-50/60 hover:bg-slate-50 rounded-2xl border border-slate-100/80 space-y-4 transition-all flex flex-col justify-between">
+                                            <div className="space-y-3">
+                                              <div className="flex justify-between items-start gap-4">
+                                                <h4 className="text-xs font-black text-slate-800 leading-relaxed md:max-w-[70%]">
+                                                  {skill.name}
+                                                </h4>
+                                                <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg border shrink-0 ${
+                                                   scoreStyle 
+                                                     ? scoreStyle.badge 
+                                                     : 'text-slate-400 bg-slate-100/70 border-slate-100'
+                                                }`}>
+                                                  {scoreStyle ? scoreStyle.label : 'لم يقيّم'}
+                                                </span>
+                                              </div>
+                                              
+                                              {/* Mini level progress indicator */}
+                                              {scoreValue?.score && (
+                                                <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                  <div className={`h-full rounded-full transition-all duration-500 ${
+                                                    scoreValue.score === 'mastered' ? 'bg-emerald-500 w-full' :
+                                                    scoreValue.score === 'advanced' ? 'bg-indigo-500 w-[80%]' :
+                                                    scoreValue.score === 'accepted' ? 'bg-cyan-500 w-[60%]' :
+                                                    scoreValue.score === 'weak' ? 'bg-amber-500 w-[40%]' : 'bg-rose-500 w-[20%]'
+                                                  }`} />
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            {/* Teacher Note Speech Box */}
+                                            {scoreValue?.note && (
+                                               <div className={`mt-2 p-3 rounded-xl border-r-4 ${
+                                                 scoreValue.score === 'mastered' ? 'bg-emerald-50/40 border-emerald-450 text-emerald-950' :
+                                                 scoreValue.score === 'advanced' ? 'bg-indigo-50/30 border-indigo-400 text-indigo-950' :
+                                                 scoreValue.score === 'accepted' ? 'bg-cyan-50/30 border-cyan-400 text-cyan-950' :
+                                                 scoreValue.score === 'weak' ? 'bg-amber-50/45 border-amber-400 text-amber-950' :
+                                                 'bg-rose-50/30 border-rose-450 text-rose-950'
+                                               } text-[10px] font-bold leading-relaxed space-y-1`}>
+                                                 <div className="text-[8px] opacity-75 flex items-center gap-1 font-black uppercase tracking-wider">
+                                                   <span className="w-1 h-1 rounded-full bg-current animate-pulse" />
+                                                   توجيه وملاحظة المعلم
+                                                 </div>
+                                                 <p className="opacity-90">{scoreValue.note}</p>
+                                               </div>
+                                            )}
+                                          </div>
+                                        );
+                                     })}
+                                   </div>
+                                )}
+                              </div>
+                            );
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1102,6 +1535,7 @@ export default function App() {
               evaluations={evaluations}
               setEvaluations={setEvaluations}
               academicYear={academicYear}
+              activeTerm={activeTerm}
               initialClassId={selectedClass?.id}
               initialSubjectId={selectedSubject?.id}
               onClose={() => setView('dashboard')}
@@ -1114,7 +1548,10 @@ export default function App() {
               teacher={selectedTeacher}
               data={appData}
               calculatePerformance={calculatePerformance}
-              onClose={() => setView('dashboard')}
+              onClose={() => {
+                setView(previousTeacherView || 'dashboard');
+                setSelectedTeacher(null);
+              }}
               onSelectQuiz={(q) => { setSelectedQuiz(q); setView('quiz-report'); }}
             />
           )}
@@ -1125,7 +1562,16 @@ export default function App() {
               data={appData}
               evaluations={evaluations}
               academicYear={academicYear}
-              onClose={() => setView('dashboard')}
+              activeTerm={activeTerm}
+              onClose={() => {
+                if (navHistory.length > 0) {
+                  handleGoBack();
+                } else {
+                  setView('dashboard');
+                  setSelectedStudent(null);
+                }
+              }}
+              onBack={() => handleGoBack()}
               onStartQuiz={(q) => { setSelectedQuiz(q); setView('quiz'); }}
             />
           )}
@@ -1329,7 +1775,7 @@ export default function App() {
                                     <button 
                                       key={sub.id}
                                       onClick={() => { setSelectedSubject(sub); setView('subjects'); }}
-                                      className="bg-white p-6 rounded-[32px] border border-slate-100 hover:border-indigo-500 shadow-minimal hover:shadow-xl transition-all text-right group relative overflow-hidden"
+                                      className="bg-white p-6 rounded-3xl border border-slate-100 hover:border-indigo-500 shadow-minimal hover:shadow-xl transition-all text-right group relative overflow-hidden"
                                     >
                                       <div className="relative z-10 flex flex-col gap-4">
                                          <div className="flex justify-between items-center">
@@ -1490,7 +1936,7 @@ export default function App() {
                                        return (
                                          <div
                                            key={student.id}
-                                           className={`bg-white rounded-[32px] border transition-all flex flex-col p-4 relative group ${
+                                           className={`bg-white rounded-3xl border transition-all flex flex-col p-4 relative group ${
                                              selectedStudent?.id === student.id ? 'border-sky-600 shadow-xl scale-[1.02]' : 'border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200'
                                            } ${isTested ? 'bg-green-50/20 border-green-100' : ''}`}
                                          >
@@ -1579,7 +2025,7 @@ export default function App() {
                                   {/* Analytics Section at bottom */}
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
                                      {/* Coverage Ratio */}
-                                     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col justify-between gap-4">
+                                     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between gap-4">
                                         <div className="flex items-center gap-4">
                                            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-lg">
                                               <TrendingUp size={20} />
@@ -1635,7 +2081,7 @@ export default function App() {
                                      </div>
 
                                      {/* Performance Ratio (Achievement Rate) */}
-                                     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col justify-between gap-4">
+                                     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between gap-4">
                                         <div className="flex items-center gap-4">
                                            <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-lg">
                                               <Star size={20} />
@@ -1706,7 +2152,7 @@ export default function App() {
                                   </div>
                                </motion.div>
                              ) : (
-                               <div className="h-64 flex flex-col items-center justify-center text-center space-y-4 bg-white rounded-[48px] border border-dashed border-slate-200">
+                               <div className="h-64 flex flex-col items-center justify-center text-center space-y-4 bg-white rounded-3xl border border-dashed border-slate-200">
                                   <div className="w-16 h-16 bg-slate-50 rounded-[24px] flex items-center justify-center text-slate-200">
                                      <LayoutDashboard size={32} />
                                   </div>
@@ -1794,9 +2240,9 @@ export default function App() {
                         >إغلاق التقييم الفردي</button>
 
                         <div className="md:w-1/3 flex flex-col gap-8">
-                           <div className="bg-indigo-50 p-10 rounded-[48px] border border-indigo-100">
+                           <div className="bg-indigo-50 p-10 rounded-3xl border border-indigo-100">
                               <p className="text-indigo-600 font-black text-xs mb-4 uppercase tracking-[0.2em] underline">ملف الطالب</p>
-                              <h3 className="text-4xl font-black text-slate-900 mb-2">{selectedStudent.name}</h3>
+                              <h3 className="text-3xl md:text-4xl font-black tracking-tighter text-slate-900 mb-2">{selectedStudent.name}</h3>
                               <p className="text-slate-400 font-medium">سجل الأداء التعليمي • {selectedClass.name}</p>
                               
                               <div className="mt-8 pt-8 border-t border-indigo-200/50 space-y-4">
@@ -1873,7 +2319,7 @@ export default function App() {
                                           }
                                         });
                                       }}
-                                      className="flex flex-col items-center justify-center gap-2 p-6 rounded-[32px] border-2 border-red-100 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all group shrink-0"
+                                      className="flex flex-col items-center justify-center gap-2 p-6 rounded-3xl border-2 border-red-100 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all group shrink-0"
                                     >
                                       <Eraser size={24} />
                                       <span className="text-[10px] font-black uppercase">مسح</span>
@@ -1910,8 +2356,12 @@ export default function App() {
               data={appData} 
               evaluations={evaluations} 
               academicYear={academicYear}
+              displayYear={displayYear}
+              activeTerm={activeTerm}
               onSelectStudent={(st) => { setSelectedStudent(st); setView('student-report'); }}
               filterTeacherId={globalFilterTeacherId}
+              onFilterTeacherChange={setGlobalFilterTeacherId}
+              onSelectTeacher={(t) => { setSelectedTeacher(t); setPreviousTeacherView('reports'); setView('teacher-profile'); }}
               onClose={isTeacherReportMode ? undefined : () => setView('dashboard')}
               calculatePerformance={calculatePerformance}
             />
@@ -1935,9 +2385,9 @@ export default function App() {
                   </div>
 
                   {!selectedStudent ? (
-                    <div className="bg-white p-12 rounded-[48px] text-center border-2 border-dashed border-slate-200">
+                    <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-slate-200">
                        <Users size={64} className="mx-auto text-slate-200 mb-6" />
-                       <h3 className="text-2xl font-black text-slate-300 mb-8">ابحث عن طالب لاستخراج تقريره</h3>
+                       <h3 className="text-xl md:text-2xl font-black tracking-tighter text-slate-300 mb-8">ابحث عن طالب لاستخراج تقريره</h3>
                        <div className="max-w-md mx-auto relative">
                           <input 
                             type="text" 
@@ -1961,7 +2411,7 @@ export default function App() {
                     <div className="space-y-8">
                        <div className="bg-white p-12 rounded-[60px] shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col md:flex-row gap-12 items-center relative overflow-hidden">
                           <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-600/5 rounded-full -mr-40 -mt-40 blur-3xl" />
-                          <div className="w-32 h-32 rounded-[40px] bg-indigo-600 text-white flex items-center justify-center text-5xl font-black shadow-2xl relative z-10 shrink-0">
+                          <div className="w-32 h-32 rounded-[40px] bg-[#7a1c22] text-white flex items-center justify-center text-5xl font-black shadow-2xl relative z-10 shrink-0">
                              {selectedStudent.name.charAt(0)}
                           </div>
                          <div className="flex-1 text-center md:text-right relative z-10">
@@ -2006,7 +2456,7 @@ export default function App() {
                             const teacherNameToDisplay = teacher?.name || sub.teacherName || 'عضو هيئة التدريس';
 
                             return (
-                              <div key={sub.id} className="bg-white p-6 md:p-10 rounded-[32px] md:rounded-[48px] border border-slate-100 shadow-minimal flex flex-col gap-6 md:gap-8">
+                              <div key={sub.id} className="bg-white p-6 md:p-10 rounded-3xl md:rounded-3xl border border-slate-100 shadow-minimal flex flex-col gap-6 md:gap-8">
                                  <div className="flex justify-between items-start">
                                     <div>
                                        <p className="text-sm md:text-base font-black text-indigo-600 mb-1">{sub.name}</p>
@@ -2163,7 +2613,7 @@ export default function App() {
                           });
 
                           return (
-                            <div className="bg-white p-6 md:p-10 rounded-[32px] border border-slate-100 shadow-sm mt-8">
+                            <div className="bg-white p-6 md:p-10 rounded-3xl border border-slate-100 shadow-sm mt-8">
                               <h4 className="text-lg md:text-xl font-black text-indigo-900 mb-6 flex items-center gap-3">
                                 <BrainCircuit size={20} className="text-indigo-500" /> اختبارات عامة ومستقلة
                               </h4>
@@ -2234,7 +2684,7 @@ export default function App() {
                                   }
                                 })()}
                              </div>
-                             <button onClick={() => window.print()} className="bg-white text-indigo-900 px-8 py-4 md:px-10 md:py-5 rounded-[24px] md:rounded-[32px] font-black shadow-xl shrink-0 print:hidden hover:-translate-y-1 transition-transform">طباعة التقرير (PDF)</button>
+                             <button onClick={() => window.print()} className="bg-white text-indigo-900 px-8 py-4 md:px-10 md:py-5 rounded-[24px] md:rounded-3xl font-black shadow-xl shrink-0 print:hidden hover:-translate-y-1 transition-transform">طباعة التقرير (PDF)</button>
                           </div>
                           <Award className="absolute -bottom-10 -left-10 w-64 h-64 text-white/5 -rotate-12" />
                        </div>
@@ -2293,7 +2743,7 @@ function EvaluationButtonLarge({ active, type, children, onClick }: {
     <div className="flex-1 flex flex-col gap-4">
       <button
         onClick={() => onClick(note)}
-        className={`w-full py-6 rounded-[32px] font-black text-sm transition-all border-2 ${styles[type]}`}
+        className={`w-full py-6 rounded-3xl font-black text-sm transition-all border-2 ${styles[type]}`}
       >
         {children}
       </button>
@@ -2313,7 +2763,7 @@ function ClassMetric({ value }: { value: number }) {
     <div className="flex items-center gap-6 px-4">
       <div className="text-right">
         <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">مؤشر الإنجاز</p>
-        <p className="text-4xl font-black text-white leading-none">{value}%</p>
+        <p className="text-3xl md:text-4xl font-black tracking-tighter text-white leading-none">{value}%</p>
       </div>
       <div className="w-16 h-16 rounded-full border-4 border-white/10 flex items-center justify-center relative overflow-hidden bg-white/5 shadow-inner">
         <motion.div 

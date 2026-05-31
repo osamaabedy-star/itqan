@@ -84,6 +84,23 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
     }).sort((a, b) => b.average - a.average);
   }, [validClasses, targetStudents, results]);
 
+  const targetedSkills = useMemo(() => {
+    return data.skills.filter(sk => {
+       if (sk.isArchived) return false;
+       const matchGrade = !sk.gradeId || sk.gradeId === quiz.gradeId;
+       const matchSubject = (sk.subjectId && quiz.subjectIds?.includes(sk.subjectId)) || 
+                            (sk.subjectName && (sk.subjectName === quiz.subjectName || subject?.name === sk.subjectName));
+       return matchGrade && matchSubject;
+    });
+  }, [data.skills, quiz, subject]);
+
+  const getStudentEvaluation = (score: number) => {
+    if (score >= 85) return { text: 'متميز', color: 'bg-emerald-50 text-emerald-700 border-emerald-150' };
+    if (score >= 70) return { text: 'متقدم', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+    if (score >= 50) return { text: 'مقبول', color: 'bg-amber-50 text-amber-700 border-amber-150' };
+    return { text: 'ضعيف', color: 'bg-rose-50 text-rose-700 border-rose-150' };
+  };
+
   const questionPerformances = useMemo(() => {
     return quiz.questions.map((q, index) => {
       let correctCount = 0;
@@ -95,6 +112,8 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
       const percent = results.length > 0 ? Math.round((correctCount / results.length) * 100) : 0;
       return {
         questionText: q.text,
+        options: q.options,
+        correctAnswerIndex: q.correctAnswerIndex,
         percent
       };
     });
@@ -199,6 +218,25 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
            {/* Classes Performance & Question Analysis */}
            <div className="lg:col-span-1 space-y-8 print:w-full print:mb-8">
               <div className="space-y-6">
+                 {/* Targeted Skills Card - Requirement 5 */}
+                 <div className="space-y-6 mb-8 font-sans">
+                    <h2 className="text-xl font-black text-slate-800">المهارات المستهدفة بالاختبار</h2>
+                    <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 space-y-3 print:border-none print:shadow-none print:p-0">
+                       {targetedSkills.length > 0 ? (
+                          <div className="flex flex-wrap gap-2.5">
+                             {targetedSkills.map((sk, idx) => (
+                                <div key={idx} className="px-3 py-2 bg-indigo-50/50 border border-indigo-100 text-indigo-950 font-black text-xs rounded-xl flex items-center gap-1.5 matches-skill">
+                                   <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full shrink-0" />
+                                   <span>{sk.name}</span>
+                                </div>
+                             ))}
+                          </div>
+                       ) : (
+                          <p className="text-xs text-slate-400 italic">لا توجد مهارات مسجلة لهذه الكفاية/المادة بالاختبار</p>
+                       )}
+                    </div>
+                 </div>
+
                  <h2 className="text-xl font-black text-slate-800">أداء الفصول</h2>
                  <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 space-y-4 print:border-none print:shadow-none print:p-0">
                     {classPerformances.map((cp, idx) => (
@@ -223,19 +261,35 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
               </div>
 
               <div className="space-y-6">
-                 <h2 className="text-xl font-black text-slate-800">تحليل الأسئلة (نقاط القوة والضعف)</h2>
+                 <h2 className="text-xl font-black text-slate-800">تحليل وتقييم الأسئلة تفصيلياً</h2>
                  <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 space-y-4 print:border-none print:shadow-none print:p-0">
                     {questionPerformances.map((qp, idx) => (
-                       <div key={idx} className="space-y-2">
+                       <div key={idx} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100/60 space-y-3 font-medium">
                           <div className="flex justify-between items-start gap-4">
                              <p className="text-sm font-bold text-slate-700 leading-relaxed flex-1">
                                <span className="text-indigo-600 ml-1">{idx + 1}.</span> 
                                {qp.questionText}
                              </p>
-                             <span className={`px-2 py-1 rounded-lg text-xs font-black ${qp.percent >= 80 ? 'bg-emerald-50 text-emerald-600' : qp.percent >= 50 ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'}`}>
-                                {qp.percent}%
+                             <span className={`px-2 py-1.5 rounded-lg text-xs font-black shrink-0 ${qp.percent >= 85 ? 'bg-emerald-50 text-emerald-600' : qp.percent >= 50 ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'}`}>
+                                صحيح: {qp.percent}%
                              </span>
                           </div>
+                          {/* Options list */}
+                          <div className="grid grid-cols-1 gap-1.5 text-xs font-bold pt-1 mb-3">
+                             {qp.options?.map((opt, optIdx) => {
+                                const isCorrect = optIdx === qp.correctAnswerIndex;
+                                return (
+                                   <div 
+                                      key={optIdx} 
+                                      className={`px-3 py-2 rounded-xl border flex items-center justify-between transition-all ${isCorrect ? 'bg-emerald-50 border-emerald-150 text-emerald-700 font-extrabold' : 'bg-white border-slate-150 text-slate-500'}`}
+                                   >
+                                      <span>{opt}</span>
+                                      {isCorrect && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-md font-bold shrink-0">الإجابة الصحيحة</span>}
+                                   </div>
+                                );
+                             })}
+                          </div>
+
                           <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                              <div 
                                 className={`h-full rounded-full ${qp.percent >= 80 ? 'bg-emerald-500' : qp.percent >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} 
@@ -258,7 +312,8 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
                           <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase print:border print:border-slate-200">اسم الطالب</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase print:border print:border-slate-200">الفصل</th>
                           <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase text-center print:border print:border-slate-200">الحالة</th>
-                          <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase text-center print:border print:border-slate-200">الدرجة</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase text-center print:border print:border-slate-200">النسبة العامة (الدرجة)</th>
+                          <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase text-center print:border print:border-slate-200">التقييم الفردي</th>
                        </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -289,7 +344,21 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
                                 </td>
                                 <td className="px-6 py-4 text-center print:border print:border-slate-200">
                                    {result ? (
-                                      <span className="font-black text-lg text-slate-800">{result.score}%</span>
+                                      <span className="font-black text-lg text-indigo-600">{result.score}%</span>
+                                   ) : (
+                                      <span className="text-slate-400 font-bold">-</span>
+                                   )}
+                                </td>
+                                <td className="px-6 py-4 text-center print:border print:border-slate-200">
+                                   {result ? (
+                                      (() => {
+                                         const evalObj = getStudentEvaluation(result.score);
+                                         return (
+                                            <span className={`inline-flex px-2.5 py-1.5 rounded-lg border text-xs font-black ${evalObj.color}`}>
+                                               {evalObj.text}
+                                            </span>
+                                         );
+                                      })()
                                    ) : (
                                       <span className="text-slate-400 font-bold">-</span>
                                    )}
@@ -299,7 +368,7 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
                        })}
                        {targetStudents.length === 0 && (
                           <tr>
-                             <td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-bold print:border print:border-slate-200">
+                             <td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold print:border print:border-slate-200">
                                 لا يوجد طلاب مستهدفين في هذا الاختبار
                              </td>
                           </tr>

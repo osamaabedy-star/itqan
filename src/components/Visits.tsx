@@ -9,6 +9,7 @@ interface VisitsProps {
   data: AppData;
   evaluations: Evaluations;
   academicYear: string;
+  activeTerm: 'term1' | 'term2';
 }
 
 const SCORE_LABELS: Record<number, string> = {
@@ -18,7 +19,7 @@ const SCORE_LABELS: Record<number, string> = {
   1: 'يحتاج تطوير'
 };
 
-export function Visits({ data, evaluations, academicYear }: VisitsProps) {
+export function Visits({ data, evaluations, academicYear, activeTerm }: VisitsProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedVisitId, setSelectedVisitId] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export function Visits({ data, evaluations, academicYear }: VisitsProps) {
     
     const id = editingId || 'visit_' + Date.now();
     await firestoreService.saveItem('visits', id, {
+      term: activeTerm,
       teacherId: targetTeacherId,
       rubricId: selectedRubricId,
       date: visitDate,
@@ -460,7 +462,7 @@ export function Visits({ data, evaluations, academicYear }: VisitsProps) {
           )}
           
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-             {data.visits?.filter(v => !v.isArchived).map(visit => {
+             {data.visits?.filter(v => !v.isArchived && (v.term || 'term1') === activeTerm).map(visit => {
                 const teacher = data.teachers.find(t => t.id === visit.teacherId);
                 const students = data.students.filter(s => visit.selectedStudentIds?.includes(s.id));
                 

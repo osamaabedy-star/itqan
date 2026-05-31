@@ -1,0 +1,1 @@
+                                                    const quizObj = data.quizzes.find(q => q.id === res.quizId);

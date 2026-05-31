@@ -12,11 +12,12 @@ interface MonitoringMatrixProps {
   onClose: () => void;
   onSelectStudent?: (st: Student) => void;
   academicYear: string;
+  activeTerm: 'term1' | 'term2';
   initialClassId?: string;
   initialSubjectId?: string;
 }
 
-export function MonitoringMatrix({ data, evaluations, setEvaluations, onClose, onSelectStudent, academicYear, initialClassId = '', initialSubjectId = '' }: MonitoringMatrixProps) {
+export function MonitoringMatrix({ data, evaluations, setEvaluations, onClose, onSelectStudent, academicYear, activeTerm, initialClassId = '', initialSubjectId = '' }: MonitoringMatrixProps) {
   const [selectedClassId, setSelectedClassId] = useState(initialClassId);
   const [selectedSubjectId, setSelectedSubjectId] = useState(initialSubjectId);
   const [searchTerm, setSearchTerm] = useState('');
@@ -155,51 +156,51 @@ export function MonitoringMatrix({ data, evaluations, setEvaluations, onClose, o
   return (
     <div className="flex-1 flex flex-col bg-slate-100 overflow-hidden" dir="rtl">
       {/* Header Filters */}
-      <div className="bg-white border-b border-slate-200 p-3 md:p-4 flex flex-col md:flex-row gap-4 items-center sticky top-0 z-50 shadow-sm">
-        <div className="flex items-center gap-4 flex-1 w-full">
-          <div className="flex flex-col gap-1 flex-1">
-             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2 leading-none">الفصل</label>
+      <div className="bg-white border-b border-slate-200 p-2 md:p-3 flex flex-col md:flex-row gap-3 items-center sticky top-0 z-50 shadow-sm shrink-0">
+        <div className="flex items-center gap-3 flex-1 w-full">
+          <div className="flex flex-col gap-0.5 flex-1">
+             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2 leading-none">الفصل</label>
              <select 
                value={selectedClassId}
                onChange={(e) => { setSelectedClassId(e.target.value); setSelectedSubjectId(''); }}
-               className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl px-4 font-black text-[12px] outline-none focus:ring-4 focus:ring-indigo-100 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C/polyline%3E%3C/svg%3E')] bg-[length:1.1rem_1.1rem] bg-[right_0.75rem_center] bg-no-repeat"
+               className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-3 font-black text-[11px] outline-none focus:ring-2 focus:ring-indigo-100 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C/polyline%3E%3C/svg%3E')] bg-[length:1rem_1rem] bg-[right_0.5rem_center] bg-no-repeat"
              >
                 <option value="">اختر الفصل...</option>
                 {data.classes.filter(c => !c.isArchived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
              </select>
           </div>
 
-          <div className="flex flex-col gap-1 flex-1">
-             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2 leading-none">المادة</label>
+          <div className="flex flex-col gap-0.5 flex-1">
+             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-2 leading-none">المادة</label>
              <select 
                value={selectedSubjectId}
                onChange={(e) => setSelectedSubjectId(e.target.value)}
                disabled={!selectedClassId}
-               className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl px-4 font-black text-[12px] outline-none focus:ring-4 focus:ring-indigo-100 disabled:opacity-50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C/polyline%3E%3C/svg%3E')] bg-[length:1.1rem_1.1rem] bg-[right_0.75rem_center] bg-no-repeat"
+               className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-3 font-black text-[11px] outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C/polyline%3E%3C/svg%3E')] bg-[length:1rem_1rem] bg-[right_0.5rem_center] bg-no-repeat"
              >
                 <option value="">اختر المادة...</option>
                 {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
              </select>
           </div>
 
-          <div className="flex flex-col justify-end w-44 md:w-48">
+          <div className="flex flex-col justify-end w-32 md:w-40">
              <div className="relative">
-                <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
+                <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300" size={10} />
                 <input 
                   type="text"
                   placeholder="بحث..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg pr-8 pl-3 font-black text-[11px] outline-none focus:ring-2 focus:ring-indigo-100 placeholder-slate-400"
+                  className="w-full h-7 bg-slate-50 border border-slate-200 rounded-lg pr-7 pl-2 font-black text-[10px] outline-none focus:ring-2 focus:ring-indigo-100 placeholder-slate-400"
                 />
              </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 w-full md:w-auto self-end md:self-center">
+        <div className="flex items-center gap-3 w-full md:w-auto self-end md:self-center">
            <button 
              onClick={onClose}
-             className="h-10 px-6 bg-red-500 text-white rounded-xl font-black text-[12px] shadow-lg shadow-red-200 hover:bg-red-600 transition-all hover:scale-105 active:scale-95"
+             className="h-8 px-5 bg-red-500 text-white rounded-lg font-black text-[11px] shadow-lg shadow-red-100 hover:bg-red-600 transition-all hover:scale-105 active:scale-95"
            >خروج</button>
         </div>
       </div>

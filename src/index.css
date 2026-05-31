@@ -16,12 +16,12 @@ body {
 }
 
 h1, h2, h3, .font-black {
-  @apply font-black tracking-tight;
+  @apply font-black tracking-tighter;
 }
 
 /* Custom shadow for theme */
 .shadow-minimal {
-  box-shadow: 0 10px 40px -10px rgba(79, 70, 229, 0.08);
+  box-shadow: 0 8px 30px -4px rgba(79, 70, 229, 0.06);
   transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
@@ -57,7 +57,7 @@ h1, h2, h3, .font-black {
   --theme-text-primary: #0f172a;
   --theme-text-muted: #64748b;
   --theme-text-light: #94a3b8;
-  --theme-shadow: 0 10px 40px -10px rgba(79, 70, 229, 0.08);
+  --theme-shadow: 0 8px 30px -4px rgba(79, 70, 229, 0.06);
 }
 
 .theme-dark {
@@ -96,8 +96,8 @@ h1, h2, h3, .font-black {
 }
 
 /* 3. Card Container Background Overrides */
-.theme-dark .bg-white, .theme-dark .bg-white\/80, .theme-dark .bg-white\/90,
-.theme-calm .bg-white, .theme-calm .bg-white\/80, .theme-calm .bg-white\/90 {
+.theme-dark .bg-white, .theme-dark .bg-white\/80, .theme-dark .bg-white\/90, .theme-dark .bg-white\/75, .theme-dark .bg-white\/70,
+.theme-calm .bg-white, .theme-calm .bg-white\/80, .theme-calm .bg-white\/90, .theme-calm .bg-white\/75, .theme-calm .bg-white\/70 {
   background-color: var(--theme-bg-card) !important;
   color: var(--theme-text-primary) !important;
 }

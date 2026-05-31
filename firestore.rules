@@ -97,7 +97,7 @@ service cloud.firestore {
              data.score in ['mastered', 'advanced', 'accepted', 'weak', 'very-weak'] &&
              data.academicYear is string &&
              (data.updatedAt is timestamp || data.updatedAt is string) &&
-             data.evaluatorId == request.auth.uid;
+             (request.auth == null || data.evaluatorId == request.auth.uid);
     }
 
     function isValidRubric(data) {
@@ -133,86 +133,87 @@ service cloud.firestore {
     // --- Collection Routes ---
 
     match /externalProfiles/{profileId} {
-      allow read: if isSignedIn();
+      allow get: if true;
+      allow list: if true;
       allow create: if isAdmin() && isValidExternalProfile(incoming());
       allow update: if (isAdmin() && isValidExternalProfile(incoming())) || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['isArchived']));
       allow delete: if isAdmin();
     }
 
     match /teachers/{teacherId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidTeacher(incoming());
       allow delete: if isAdmin();
     }
 
     match /grades/{gradeId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidGrade(incoming());
       allow delete: if isAdmin();
     }
 
     match /classes/{classId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidClass(incoming());
       allow delete: if isAdmin();
     }
 
     match /students/{studentId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidStudent(incoming());
       allow delete: if isAdmin();
     }
 
     match /subjects/{subjectId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidSubject(incoming());
       allow delete: if isAdmin();
     }
 
     match /skills/{skillId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidSkill(incoming());
       allow delete: if isAdmin();
     }
 
     match /quizzes/{quizId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidQuiz(incoming());
       allow delete: if isAdmin();
     }
 
     match /quizResults/{resultId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidQuizResult(incoming());
+      allow read: if true;
+      allow create, update: if (isSignedIn() && isValidQuizResult(incoming())) || (!isSignedIn() && isValidQuizResult(incoming()));
       allow delete: if isAdmin();
     }
 
     match /evaluations/{evaluationId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidEvaluation(incoming());
+      allow read: if true;
+      allow create, update: if (isSignedIn() && isValidEvaluation(incoming())) || (!isSignedIn() && isValidEvaluation(incoming()));
       allow delete: if isAdmin();
     }
 
     match /rubrics/{rubricId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidRubric(incoming());
       allow delete: if isAdmin();
     }
 
     match /visits/{visitId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidVisit(incoming());
+      allow read: if true;
+      allow create, update: if (isSignedIn() && isValidVisit(incoming())) || (!isSignedIn() && isValidVisit(incoming()));
       allow delete: if isAdmin();
     }
 
     match /quizSignatures/{signatureId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidQuizSignature(incoming());
+      allow read: if true;
+      allow create, update: if (isSignedIn() && isValidQuizSignature(incoming())) || (!isSignedIn() && isValidQuizSignature(incoming()));
       allow delete: if isAdmin();
     }
 
     match /settings/{settingId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update, delete: if isAdmin();
     }
   }

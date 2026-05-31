@@ -8,7 +8,8 @@ import {
   onSnapshot,
   Timestamp,
   serverTimestamp,
-  deleteDoc
+  deleteDoc,
+  getDoc
 } from 'firebase/firestore';
 import { 
   signInWithPopup, 
@@ -144,8 +145,7 @@ export const firestoreService = {
   },
 
   async saveItem(collectionName: string, id: string, data: any) {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('User must be signed in to save data');
+    const userId = auth.currentUser?.uid || 'anonymous_user';
     const path = `${collectionName}/${id}`;
     try {
       await setDoc(doc(db, collectionName, id), {
@@ -160,8 +160,6 @@ export const firestoreService = {
   },
 
   async deleteItem(collectionName: string, id: string) {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('User must be signed in to delete data');
     const path = `${collectionName}/${id}`;
     try {
       await deleteDoc(doc(db, collectionName, id));
@@ -171,9 +169,6 @@ export const firestoreService = {
   },
 
   async deleteEvaluation(studentId: string, skillId: string, academicYear: string = '2024-2025') {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('User must be signed in to delete evaluation');
-
     const evaluationId = `${studentId}_${skillId}_${academicYear}`;
     const path = `evaluations/${evaluationId}`;
     
@@ -185,9 +180,6 @@ export const firestoreService = {
   },
 
   async resetAllEvaluations(studentIds: string[], skillIds: string[], academicYear: string) {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('User must be signed in to reset evaluations');
-
     for (const studentId of studentIds) {
       for (const skillId of skillIds) {
         const evalId = `${studentId}_${skillId}_${academicYear}`;
@@ -210,15 +202,23 @@ export const firestoreService = {
     });
   },
 
+  async getCollection(collectionName: string) {
+    try {
+      const snapshot = await getDocs(collection(db, collectionName));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, collectionName);
+      return [];
+    }
+  },
+
   async getExternalProfile(profileId: string) {
     const path = `externalProfiles/${profileId}`;
     try {
-      const colRef = collection(db, 'externalProfiles');
-      const q = query(colRef, where('id', '==', profileId));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const docData = snapshot.docs[0].data();
-        return { id: snapshot.docs[0].id, ...docData };
+      const docRef = doc(db, 'externalProfiles', profileId);
+      const snapshot = await getDoc(docRef);
+      if (snapshot.exists()) {
+        return { id: snapshot.id, ...snapshot.data() };
       }
       return null;
     } catch (error) {
@@ -228,8 +228,6 @@ export const firestoreService = {
   },
 
   async saveQuizResult(result: any) {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('User must be signed in to save quiz results');
     const id = `${result.studentId}_${result.quizId}`;
     try {
       await setDoc(doc(db, 'quizResults', id), {

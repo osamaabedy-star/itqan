@@ -18,7 +18,8 @@ import {
   AlertTriangle,
   XCircle,
   ChevronRight,
-  BarChart3
+  BarChart3,
+  ChevronLeft
 } from 'lucide-react';
 import { 
   Radar, 
@@ -45,16 +46,18 @@ interface StudentProfileProps {
   data: AppData;
   evaluations: Record<string, Evaluation>;
   onClose: () => void;
+  onBack?: () => void;
   onStartQuiz: (quiz: Quiz) => void;
   academicYear: string;
+  activeTerm: 'term1' | 'term2';
 }
 
-export function StudentProfile({ student, data, evaluations, onClose, onStartQuiz, academicYear }: StudentProfileProps) {
+export function StudentProfile({ student, data, evaluations, onClose, onBack, onStartQuiz, academicYear, activeTerm }: StudentProfileProps) {
   const [activeTab, setActiveTab] = useState<'skills' | 'quizzes'>('skills');
   const [evaluatingSkill, setEvaluatingSkill] = useState<Skill | null>(null);
   const [selectedSkillDetails, setSelectedSkillDetails] = useState<Skill | null>(null);
 
-  const activeQuizzes = data.quizzes.filter(q => !q.isArchived);
+  const activeQuizzes = data.quizzes.filter(q => !q.isArchived && (q.term || 'term1') === activeTerm);
   const activeQuizIds = new Set(activeQuizzes.map(q => q.id));
   
   const quizResults = data.quizResults?.filter(r => 
@@ -168,12 +171,22 @@ export function StudentProfile({ student, data, evaluations, onClose, onStartQui
       >
         {/* Header Section */}
         <div className="bg-white p-8 pb-6 flex items-center gap-6 relative">
-           <button 
-             onClick={onClose}
-             className="absolute top-6 left-6 w-10 h-10 rounded-2xl bg-slate-50 text-slate-400 hover:text-indigo-600 flex items-center justify-center transition-all border border-slate-100 hover:shadow-sm"
-           >
-              <X size={20} />
-           </button>
+           <div className="flex gap-2">
+             <button 
+               onClick={onClose}
+               className="w-10 h-10 rounded-2xl bg-slate-50 text-slate-400 hover:text-indigo-600 flex items-center justify-center transition-all border border-slate-100 hover:shadow-sm"
+             >
+                <X size={20} />
+             </button>
+             {onBack && (
+               <button 
+                 onClick={onBack}
+                 className="w-10 h-10 rounded-2xl bg-slate-50 text-slate-400 hover:text-indigo-600 flex items-center justify-center transition-all border border-slate-100 hover:shadow-sm"
+               >
+                  <ChevronLeft size={20} />
+               </button>
+             )}
+           </div>
 
            <div className="w-24 h-24 rounded-3xl bg-indigo-50 text-indigo-400 border border-indigo-100 flex items-center justify-center shadow-inner overflow-hidden shrink-0">
               {student.photoUrl ? (

@@ -48,6 +48,7 @@ interface DashboardProps {
   data: AppData;
   evaluations: Evaluations;
   academicYear: string;
+  activeTerm: 'term1' | 'term2';
   onNavigate: (view: string) => void;
   onSelectClass: (cls: Class) => void;
   onSelectStudent: (st: Student) => void;
@@ -55,6 +56,7 @@ interface DashboardProps {
   onSelectQuiz: (q: Quiz, st: Student) => void;
   calculatePerformance: (classId: string, subjectId?: string) => number;
   filterTeacherId?: string;
+  onFilterTeacherChange?: (id: string) => void;
 }
 
 import { APP_STAGES } from "../constants";
@@ -63,6 +65,7 @@ export function Dashboard({
   data,
   evaluations,
   academicYear,
+  activeTerm,
   onNavigate,
   onSelectClass,
   onSelectStudent,
@@ -70,6 +73,7 @@ export function Dashboard({
   onSelectQuiz,
   calculatePerformance,
   filterTeacherId,
+  onFilterTeacherChange,
 }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
@@ -120,6 +124,7 @@ export function Dashboard({
     .filter(
       (q) =>
         !q.isArchived &&
+        (q.term || 'term1') === activeTerm &&
         currentGradesToList.map((g) => g.id).includes(q.gradeId || ""),
     )
     .filter((q) => {
@@ -336,39 +341,7 @@ export function Dashboard({
               )}
             </div>
 
-            <div className="mt-12">
-              <div className="flex justify-between items-center px-2 mb-6">
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <Users size={24} className="text-indigo-600" />
-                  المعلمين
-                </h2>
-                <div className="h-[2px] flex-1 mx-6 bg-slate-100 rounded-full" />
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {data.teachers
-                  .filter((t) => !t.isArchived)
-                  .map((teacher) => (
-                    <button
-                      key={teacher.id}
-                      onClick={() => onSelectTeacher(teacher)}
-                      className="bg-white p-5 rounded-3xl border border-slate-100 shadow-minimal flex items-center gap-4 hover:border-indigo-200 hover:shadow-md transition-all text-right"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-lg shrink-0">
-                        {teacher.name.replace("أ/ ", "").charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-black text-slate-800">
-                          {teacher.name}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-bold mt-1">
-                          تصفح التقارير والفصول الخاصة به
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-              </div>
-            </div>
           </div>
         ) : !selectedGradeId ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -530,7 +503,7 @@ export function Dashboard({
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Students List */}
-                  <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-minimal">
+                  <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-minimal">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
                         <Users size={20} className="text-indigo-600" />
@@ -579,7 +552,7 @@ export function Dashboard({
                   </div>
 
                   {/* Quizzes List */}
-                  <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-minimal">
+                  <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-minimal">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
                         <BrainCircuit size={20} className="text-amber-500" />
@@ -654,7 +627,7 @@ export function Dashboard({
                 </div>
 
                 {false && (
-                  <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm mb-12">
+                  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm mb-12">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
                         <TrendingUp size={20} className="text-indigo-600" />
@@ -720,7 +693,7 @@ export function Dashboard({
               </div>
             ) : (
               <div className="bg-white rounded-[40px] border border-slate-200 border-dashed p-12 text-center flex flex-col items-center">
-                <div className="w-20 h-20 bg-slate-50 text-slate-300 rounded-[28px] mb-6 flex items-center justify-center">
+                <div className="w-20 h-20 bg-slate-50 text-slate-300 rounded-3xl mb-6 flex items-center justify-center">
                   <Grid3X3 size={32} />
                 </div>
                 <h3 className="text-xl font-black text-slate-800 mb-2">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShieldCheck, 
@@ -29,24 +29,47 @@ import {
   CheckSquare,
   BookOpen,
   UserPlus,
-  Activity
+  Activity,
+  PieChart,
+  BarChart2,
+  BrainCircuit
 } from 'lucide-react';
 import { AppData, Evaluations, Teacher, Class, Student, ExternalProfile, Visit, Rubric, QuizSignature } from '../types';
 import { firestoreService } from '../services/firestoreService';
+import { 
+  ResponsiveContainer, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  Cell, 
+  CartesianGrid 
+} from 'recharts';
 
 interface ExternalPortalProps {
   data: AppData;
   evaluations: Evaluations;
   academicYear: string;
+  activeTerm: 'term1' | 'term2';
   onClose: () => void;
   onLogout?: () => void;
 }
 
-export function ExternalPortal({ data, evaluations, academicYear, onClose, onLogout }: ExternalPortalProps) {
+export function ExternalPortal({ data, evaluations, academicYear, activeTerm, onClose, onLogout }: ExternalPortalProps) {
   const [profile, setProfile] = useState<ExternalProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [idInput, setIdInput] = useState('');
   const [error, setError] = useState('');
+  const [supportPlanStudent, setSupportPlanStudent] = useState<any>(null);
+
+  // New States to expand details on the teacher's page
+  const [expandedQuizId, setExpandedQuizId] = useState<string | null>(null);
+  const [expandedAnalysisQuizId, setExpandedAnalysisQuizId] = useState<string | null>(null);
+  const [expandedVisitId, setExpandedVisitId] = useState<string | null>(null);
+  const [selectedSkillToAssess, setSelectedSkillToAssess] = useState<string | null>(null);
+  const [activeClassToAssess, setActiveClassToAssess] = useState<string>('');
+  const [showTeacherReportModal, setShowTeacherReportModal] = useState(false);
 
   // Tab selections
   const [teacherTab, setTeacherTab] = useState<'dashboard' | 'quizzes' | 'priority'>('dashboard');
@@ -95,39 +118,151 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
     return s.teacherId === activeTeacherId || s.teacherIds?.includes(activeTeacherId);
   });
 
+  const classPerformanceData = useMemo(() => {
+    const list: any[] = [];
+    if (!activeTeacherId) return list;
+
+    teacherSubjects.forEach(s => {
+      // Find matching classes for this subject
+      const matchingClasses = data.classes.filter(c => {
+        if (c.isArchived) return false;
+        if (s.gradeId && c.gradeId !== s.gradeId) return false;
+        if (s.classIds && s.classIds.length > 0) {
+           return s.classIds.includes(c.id);
+        }
+        return teacherClasses.some(tc => tc.id === c.id);
+      });
+
+      matchingClasses.forEach(c => {
+        const clsStudents = data.students.filter(st => st.classId === c.id && !st.isArchived);
+        const studentIds = new Set(clsStudents.map(st => st.id));
+        
+        // Calculate quiz average
+        const subjectQuizzes = data.quizzes.filter(q => !q.isArchived && (q.subjectIds?.includes(s.id) || q.subjectName === s.name));
+        const results = data.quizResults?.filter(r => !r.isArchived && subjectQuizzes.some(sq => sq.id === r.quizId) && studentIds.has(r.studentId)) || [];
+        const quizAvg = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length) : null;
+        
+        // Calculate skill mastery average
+        const subjSkills = data.skills.filter(sk => sk.subjectName === s.name && !sk.isArchived);
+        let totalEvals = 0;
+        let masteredEvals = 0;
+        clsStudents.forEach(st => {
+          subjSkills.forEach(sk => {
+            const ev = evaluations[`${st.id}-${sk.id}-${academicYear}`];
+            if (ev) {
+              totalEvals++;
+              if (ev.score === 'mastered') masteredEvals++;
+            }
+          });
+        });
+        const masteryPct = totalEvals > 0 ? Math.round((masteredEvals / totalEvals) * 100) : null;
+
+        // Overall average performance combined
+        const finalScore = quizAvg !== null ? (masteryPct !== null ? Math.round((quizAvg + masteryPct) / 2) : quizAvg) : (masteryPct !== null ? masteryPct : 0);
+        
+        list.push({
+          subjectName: s.name,
+          className: c.name,
+          label: `${s.name} - ${c.name}`,
+          quizAverage: quizAvg || 0,
+          skillMastery: masteryPct || 0,
+          overallIndex: finalScore || 0,
+          studentsCount: clsStudents.length
+        });
+      });
+    });
+    return list;
+  }, [teacherSubjects, teacherClasses, data, evaluations, academicYear, activeTeacherId]);
+
+  const activeQuizIds = useMemo(() => new Set(data.quizzes.filter(q => !q.isArchived && (q.term || 'term1') === activeTerm).map(q => q.id)), [data.quizzes, activeTerm]);
+
+  const teacherQuizzes = data.quizzes.filter(q => {
+    if (q.isArchived) return false;
+    
+    // Check if the quiz belongs to one of the teacher's subjects (specialization)
+    const hasSharedSubject = q.subjectIds?.some(sid => teacherSubjects.some(ts => ts.id === sid)) || 
+                             teacherSubjects.some(ts => ts.name === q.subjectName);
+    const isOwner = q.teacherId === activeTeacherId;
+    
+    // Must be owner or have matching subject
+    if (!isOwner && !hasSharedSubject) return false;
+
+    // Must also target classes taught by this teacher (if target classes are specified)
+    if (q.classIds && q.classIds.length > 0) {
+       const matchesClasses = q.classIds.some(cid => teacherClasses.some(tc => tc.id === cid));
+       if (!matchesClasses) return false;
+    }
+
+    // Must have at least one student quiz result to qualify as an evaluated quiz
+    const hasResults = data.quizResults?.some(r => !r.isArchived && r.quizId === q.id);
+    if (!hasResults) return false;
+
+    return true;
+  });
+
   // Failing and priority support students (الطلاب المخفقين)
   const weakStudentsList = data.students
     .filter(s => !s.isArchived && teacherClasses.some(tc => tc.id === s.classId))
     .map(student => {
-       const results = data.quizResults?.filter(r => r.studentId === student.id) || [];
+       // Filter quizzes to only those belonging to the teacher's quizzes
+       const results = data.quizResults?.filter(r => 
+         !r.isArchived && 
+         activeQuizIds.has(r.quizId) && 
+         r.studentId === student.id &&
+         teacherQuizzes.some(tq => tq.id === r.quizId)
+       ) || [];
        const avgQuiz = results.length > 0 ? results.reduce((sum, r) => sum + r.score, 0) / results.length : null;
        
-       const weakSkills: string[] = [];
-       data.skills.forEach(skill => {
-          const evalKey = `${student.id}-${skill.id}-${academicYear}`;
-          const evaluation = evaluations[evalKey];
-          if (evaluation && (evaluation.score === 'weak' || evaluation.score === 'very-weak')) {
-             weakSkills.push(skill.name);
-          }
+       const weakSkills: { id: string, name: string, subjectName: string }[] = [];
+       
+       // Filter skills to only those taught / specialized by the teacher
+       const teacherSkills = data.skills.filter(sk => {
+          if (sk.isArchived) return false;
+          return (sk.subjectId && teacherSubjects.some(ts => ts.id === sk.subjectId)) || 
+                 (sk.subjectName && teacherSubjects.some(ts => ts.name === sk.subjectName));
+       });
+
+       // Group skills by subject to check for consecutives
+       const subjectSkillsMap: Record<string, typeof data.skills> = {};
+       teacherSkills.forEach(skill => {
+         const subName = skill.subjectName || 'عام';
+         if (!subjectSkillsMap[subName]) subjectSkillsMap[subName] = [];
+         subjectSkillsMap[subName].push(skill);
+       });
+
+       let hasThreeConsecutiveFailures = false;
+       const failedSubjects: string[] = [];
+
+       Object.entries(subjectSkillsMap).forEach(([subName, skills]) => {
+         let consecutiveLowCount = 0;
+         skills.forEach(skill => {
+           const evalKey = `${student.id}-${skill.id}-${academicYear}`;
+           const evaluation = evaluations[evalKey];
+           const isFailed = evaluation && (evaluation.score === 'weak' || evaluation.score === 'very-weak');
+           
+           if (isFailed) {
+             weakSkills.push({ id: skill.id, name: skill.name, subjectName: subName });
+             consecutiveLowCount++;
+             if (consecutiveLowCount >= 3) {
+               hasThreeConsecutiveFailures = true;
+               if (!failedSubjects.includes(subName)) failedSubjects.push(subName);
+             }
+           } else if (evaluation && evaluation.score && evaluation.score !== 'weak' && evaluation.score !== 'very-weak') {
+             consecutiveLowCount = 0;
+           }
+         });
        });
 
        return {
           student,
           avgQuiz,
           weakSkills,
-          isDeficient: (avgQuiz !== null && avgQuiz < 50) || weakSkills.length > 0
+          hasThreeConsecutiveFailures,
+          failedSubjects,
+          isDeficient: (avgQuiz !== null && avgQuiz < 50) || weakSkills.length > 0 || hasThreeConsecutiveFailures
        };
     })
     .filter(item => item.isDeficient);
-
-  const teacherQuizzes = data.quizzes.filter(q => {
-    if (q.isArchived) return false;
-    if (q.teacherId === activeTeacherId) return true;
-    const targetMatches = q.classIds?.some(cid => teacherClasses.some(tc => tc.id === cid));
-    if (targetMatches) return true;
-    const subjectMatches = q.subjectIds?.some(sid => teacherSubjects.some(ts => ts.id === sid));
-    return subjectMatches;
-  });
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -317,13 +452,13 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md bg-white/5 backdrop-blur-2xl p-10 rounded-[48px] border border-white/10 shadow-2xl relative z-10"
+          className="w-full max-w-md bg-white/5 backdrop-blur-2xl p-10 rounded-3xl border border-white/10 shadow-2xl relative z-10"
         >
           <div className="text-center mb-10">
              <div className="w-20 h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-indigo-950/50">
                 <ShieldCheck className="text-white w-10 h-10" />
              </div>
-             <h1 className="text-2xl font-black text-white mb-2 tracking-tight">بوابة إتقان للمنسوبين</h1>
+             <h1 className="text-xl md:text-2xl font-black tracking-tighter text-white mb-2 tracking-tight">بوابة إتقان للمنسوبين</h1>
              <p className="text-indigo-300 font-medium text-sm">التوجيه الإشرافي والمتابعة التحليلية</p>
           </div>
 
@@ -388,7 +523,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-[40px] max-w-md w-full p-8 shadow-2xl border border-slate-100 space-y-6"
+               className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-100 space-y-6"
              >
                <div className="flex justify-between items-center">
                  <h3 className="text-xl font-black text-slate-900">التوقيع الإلكتروني للاطلاع</h3>
@@ -497,7 +632,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
 
           <div className="flex items-center gap-4">
              <div className="text-right hidden sm:block">
-                <p className="text-[10px] font-black text-slate-400 leading-none mb-1">مرحباً بك، {profile.role === 'supervisor' ? 'المشرف العام' : 'المعلم الفاضل/ة'}</p>
+                <p className="text-[10px] font-black text-slate-400 leading-none mb-1">مرحباً بك، {profile.role === 'supervisor' ? 'المشرف العام' : 'المعلم الفاضل'}</p>
                 <p className="text-xs font-black text-slate-800 leading-none">{profile.name}</p>
              </div>
              <div className="w-10 h-10 rounded-full bg-slate-100 border-2 border-white shadow-sm flex items-center justify-center">
@@ -519,13 +654,13 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                 <div className="space-y-8">
                    
                    {/* Welcoming and Info */}
-                   <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-[48px] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl">
+                   <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-3xl p-6 md:p-8 text-white relative overflow-hidden shadow-2xl">
                      <div className="relative z-10 flex flex-col md:flex-row gap-8 items-center">
                         <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-3xl flex items-center justify-center text-amber-400 border border-white/15 shadow-inner">
-                           <ShieldCheck size={48} />
+                           <ShieldCheck size={32} />
                         </div>
                         <div className="text-center md:text-right">
-                           <h2 className="text-2xl font-black mb-2">لوحة المشرف العام: {profile.name}</h2>
+                           <h2 className="text-xl md:text-2xl font-black tracking-tighter mb-2">لوحة المشرف العام: {profile.name}</h2>
                            <p className="text-indigo-200 font-medium text-sm leading-relaxed max-w-2xl">
                              بوابة الإشراف الشامل لمراقبة تقارير الجودة، ونسبة إنجاز المعلمين، وتقارير التحصيل النهائي للفصول، مع رصد التواقيع الإلكترونية للمعلمين.
                            </p>
@@ -559,7 +694,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                            <button 
                              onClick={() => setIsAddingVisit(true)}
-                             className="bg-indigo-600 p-8 rounded-[40px] text-white flex flex-col gap-4 text-right shadow-2xl shadow-indigo-100 hover:-translate-y-1 transition-all group overflow-hidden relative"
+                             className="bg-indigo-600 p-8 rounded-3xl text-white flex flex-col gap-4 text-right shadow-2xl shadow-indigo-100 hover:-translate-y-1 transition-all group overflow-hidden relative"
                            >
                               <div className="relative z-10">
                                 <Plus size={32} className="mb-2" />
@@ -569,24 +704,24 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                               <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-white/10 rounded-full rotate-12 group-hover:scale-125 transition-transform" />
                            </button>
 
-                           <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm flex flex-col justify-between">
+                           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
                               <div>
                                 <History className="text-indigo-600 mb-4" size={24} />
                                 <h3 className="text-lg font-black text-slate-800">إحصائيات زياراتي</h3>
                                 <p className="text-slate-400 text-[10px] font-bold">إجمالي الزيارات التي قمت باعتمادها</p>
                               </div>
-                              <div className="text-4xl font-black text-indigo-600 mt-4">
+                              <div className="text-3xl md:text-4xl font-black tracking-tighter text-indigo-600 mt-4">
                                  {data.visits.filter(v => v.supervisorId === profile.id || v.supervisorName === profile.name).length}
                               </div>
                            </div>
 
-                           <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm flex flex-col justify-between">
+                           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
                               <div>
                                 <Users className="text-amber-500 mb-4" size={24} />
                                 <h3 className="text-lg font-black text-slate-800">المعلمون بالمنظومة</h3>
                                 <p className="text-slate-400 text-[10px] font-bold">إجمالي الكادر التعليمي النشط</p>
                               </div>
-                              <div className="text-4xl font-black text-amber-500 mt-4">
+                              <div className="text-3xl md:text-4xl font-black tracking-tighter text-amber-500 mt-4">
                                  {data.teachers.filter(t => !t.isArchived).length}
                               </div>
                            </div>
@@ -594,9 +729,9 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
 
                         {/* Visit Adding form */}
                         {isAddingVisit && (
-                          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-10 rounded-[48px] border border-slate-200 shadow-2xl space-y-8">
+                          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-10 rounded-3xl border border-slate-200 shadow-2xl space-y-8">
                              <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                                <h2 className="text-xl md:text-2xl font-black tracking-tighter text-slate-900 flex items-center gap-3">
                                    <ClipboardCheck className="text-indigo-600" />
                                    تسجيل نموذج زيارة إشرافية
                                 </h2>
@@ -688,7 +823,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                              </div>
 
                              {targetClassId && (
-                                <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100 space-y-6">
+                                <div className="bg-slate-50 p-8 rounded-3xl border border-slate-100 space-y-6">
                                    <div className="flex justify-between items-center mb-2">
                                       <h4 className="font-black text-slate-800 text-sm">اختيار عينة من الطلاب للتقويم القصير</h4>
                                       <span className="text-[10px] font-black text-slate-400">{selectedStudentIds.length} طلاب مختارين</span>
@@ -754,7 +889,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                    <h3 className="text-xl font-black text-slate-900">بنود التقويم الفني</h3>
                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                       {data.rubrics?.find(r => r.id === selectedRubricId)?.categories.map(cat => (
-                                         <div key={cat.id} className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 space-y-6">
+                                         <div key={cat.id} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-6">
                                             <h4 className="font-black text-indigo-700 text-sm border-b border-indigo-100 pb-3">{cat.title}</h4>
                                             <div className="space-y-4">
                                                {cat.items.map(item => (
@@ -818,7 +953,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                 .map(visit => {
                                    const teacher = data.teachers.find(t => t.id === visit.teacherId);
                                    return (
-                                      <div key={visit.id} className="p-6 bg-white rounded-[32px] border border-slate-100 shadow-sm space-y-4 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col justify-between">
+                                      <div key={visit.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col justify-between">
                                          <div>
                                             <div className="flex justify-between items-start">
                                                <div>
@@ -851,7 +986,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                    );
                                 })}
                               {data.visits.filter(v => v.supervisorId === profile.id || v.supervisorName === profile.name).length === 0 && (
-                                 <div className="col-span-full py-12 text-center bg-white rounded-[40px] border border-dashed border-slate-200">
+                                 <div className="col-span-full py-12 text-center bg-white rounded-3xl border border-dashed border-slate-200">
                                     <p className="text-slate-300 font-black">لا توجد زيارات مسجلة باسمك بعد</p>
                                  </div>
                               )}
@@ -875,7 +1010,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                         </div>
 
                         {/* Class Achievement Percentages */}
-                        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+                        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                               <h4 className="text-lg font-black text-slate-800">معدلات التحصيل ونسب التفوق لكل فصل</h4>
                               <span className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl font-black text-xs">نسبة الإتقان للفصل</span>
@@ -886,7 +1021,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                  // Students in class
                                  const clsStudents = data.students.filter(s => s.classId === cls.id && !s.isArchived);
                                  // Results lists
-                                 const results = data.quizResults?.filter(r => clsStudents.some(cs => cs.id === r.studentId)) || [];
+                                 const results = data.quizResults?.filter(r => !r.isArchived && activeQuizIds.has(r.quizId) && clsStudents.some(cs => cs.id === r.studentId)) || [];
                                  const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length) : 0;
                                  
                                  // Total distinct quizzes
@@ -901,7 +1036,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                                الصف: {data.grades.find(g => g.id === cls.gradeId)?.name || 'غير محدد'}
                                              </p>
                                           </div>
-                                          <div className={`text-2xl font-black ${avgScore >= 75 ? 'text-emerald-500' : avgScore >= 50 ? 'text-amber-500' : 'text-rose-500'}`}>
+                                          <div className={`text-xl md:text-2xl font-black tracking-tighter ${avgScore >= 75 ? 'text-emerald-500' : avgScore >= 50 ? 'text-amber-500' : 'text-rose-500'}`}>
                                              {avgScore}%
                                           </div>
                                        </div>
@@ -922,7 +1057,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                         </div>
 
                         {/* Detailed Quiz Statistics Tracker & Signature List */}
-                        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+                        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                            <h4 className="text-lg font-black text-slate-800">بيانات ومراقبة الاختبارات وتواقيع المعلمين</h4>
                            
                            <div className="overflow-x-auto">
@@ -941,7 +1076,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                        // Students in quiz classes
                                        const quizClassIds = quiz.classIds || [];
                                        const totalStul = data.students.filter(s => quizClassIds.includes(s.classId) && !s.isArchived);
-                                       const results = data.quizResults?.filter(r => r.quizId === quiz.id) || [];
+                                       const results = data.quizResults?.filter(r => !r.isArchived && r.quizId === quiz.id) || [];
                                        const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length) : 0;
 
                                        // Find signatures for this quiz in the quizSignatures collection
@@ -997,21 +1132,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                 /* ========================================================= */
                 <div className="space-y-10">
                    
-                   {/* Teacher Banner */}
-                   <div className="bg-gradient-to-r from-indigo-900 to-indigo-950 rounded-[48px] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl">
-                      <div className="relative z-10 flex flex-col md:flex-row gap-8 items-center">
-                         <div className="w-24 h-24 bg-yellow-400/90 rounded-[2.2rem] flex items-center justify-center text-indigo-950 shadow-2xl shadow-yellow-400/20 shrink-0">
-                            <Award size={48} />
-                         </div>
-                         <div className="text-center md:text-right">
-                            <h2 className="text-2xl font-black mb-2">مرحباً بالأستاذ الفاضل: {profile.name}</h2>
-                            <p className="text-indigo-200 text-sm font-medium leading-relaxed max-w-2xl">
-                              الصفحة التعليمية الخاصة بك لمتابعة مستويات التقدم والتحصيل لطلاب الفصول المرتبطة، والاطلاع الفوري والتوقيع الموثق على الزيارات والاختبارات.
-                            </p>
-                         </div>
-                      </div>
-                      <div className="absolute top-0 left-0 w-80 h-80 bg-white/5 rounded-full -ml-40 -mt-40 blur-3xl opacity-35" />
-                   </div>
+
 
                    {/* Tabs Menu */}
                    <div className="flex bg-slate-200/50 p-1 rounded-2xl w-fit gap-2">
@@ -1044,7 +1165,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                         
                         {/* Summary side stats */}
                         <div className="md:col-span-1 space-y-6">
-                           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-4">
+                           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
                               <h4 className="text-sm font-black text-slate-400 uppercase mr-1">بطاقة المعلم الإلكترونية</h4>
                               <div className="p-4 bg-slate-50 rounded-2xl flex flex-col gap-3">
                                  <div className="flex justify-between items-center text-xs">
@@ -1059,18 +1180,184 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                    <span className="text-slate-400 font-bold">البريد الإلكتروني</span>
                                    <span className="font-extrabold text-slate-800 text-[10px]">{activeTeacherObj?.email || 'لا يوجد بريد'}</span>
                                  </div>
+
+                                 {/* Detailed list of assigned subjects with classes as requested */}
+                                 <div className="border-t border-slate-100 pt-3 mt-1 text-right">
+                                    <span className="text-slate-400 text-[10px] font-black block mb-2">المواد المسندة والفصول:</span>
+                                    <div className="space-y-2">
+                                       {teacherSubjects.map(sub => {
+                                          const matchingClasses = data.classes.filter(c => {
+                                             if (c.isArchived) return false;
+                                             if (sub.gradeId && c.gradeId !== sub.gradeId) return false;
+                                             if (sub.classIds && sub.classIds.length > 0) {
+                                                return sub.classIds.includes(c.id);
+                                             }
+                                             return teacherClasses.some(tc => tc.id === c.id);
+                                          });
+                                          return (
+                                             <div key={sub.id} className="p-2.5 bg-white rounded-xl border border-slate-100 flex justify-between items-start text-[10px]">
+                                                <div className="text-right">
+                                                   <span className="font-black text-slate-800 block">{sub.name}</span>
+                                                   <span className="text-[8px] text-slate-400 font-bold block mt-0.5">الصف: {data.grades.find(g => g.id === sub.gradeId)?.name || 'عام'}</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1 justify-end max-w-[120px]">
+                                                   {matchingClasses.map(cl => (
+                                                      <span key={cl.id} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-black rounded text-[9px]">
+                                                         {cl.name}
+                                                      </span>
+                                                   ))}
+                                                 </div>
+                                             </div>
+                                          );
+                                       })}
+                                    </div>
+                                 </div>
+
+                                 {/* Printable Report launching button */}
+                                 <button 
+                                    onClick={() => setShowTeacherReportModal(true)}
+                                    type="button"
+                                    className="w-full mt-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-150"
+                                 >
+                                    <FileCheck size={14} />
+                                    <span>التقرير الأكاديمي الموحد (طباعة/تصدير)</span>
+                                 </button>
                               </div>
                            </div>
                         </div>
 
                         {/* Recent Supervision Visits list */}
-                        <div className="md:col-span-2 space-y-6">
-                           <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
-                                 <ClipboardCheck size={18} />
+                        <div className="md:col-span-2 space-y-8">
+                           
+                           {/* Class Performance Chart Section as requested */}
+                           <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                              <div className="flex justify-between items-center flex-wrap gap-4">
+                                 <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                                       <TrendingUp size={18} />
+                                    </div>
+                                    <div className="text-right">
+                                       <h3 className="text-sm font-black text-slate-805">نسب وتحليل إنجاز الفصول المسندة</h3>
+                                       <p className="text-[9px] text-slate-400 font-bold">الدرجة المئوية المقررة بكل فصل بناءً على مخرجات التقويم</p>
+                                    </div>
+                                 </div>
                               </div>
-                              <h3 className="text-lg font-black text-slate-850">مراجعة تقارير الزيارات الإشرافية والتوقيع</h3>
+
+                              {classPerformanceData.length === 0 ? (
+                                 <div className="flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-2xl border border-slate-100/60"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><BarChart2 size={24} className="text-slate-300" /></div><h4 className="text-xs font-black text-slate-700 tracking-tight mb-1">لا توجد بيانات بالمؤشر</h4><p className="text-[10px] font-semibold text-slate-400">لا يوجد نتائج مسجلة لهذه الفصول لبناء المؤشرات البيانية حالياً</p></div>
+                              ) : (
+                                 <div className="space-y-6">
+                                    <div className="h-60 w-full pt-4">
+                                       <ResponsiveContainer width="100%" height="100%">
+                                          <BarChart data={classPerformanceData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                             <XAxis 
+                                                dataKey="label" 
+                                                tick={{ fill: '#64748b', fontSize: 9, fontWeight: 700 }}
+                                                axisLine={false}
+                                                tickLine={false}
+                                             />
+                                             <YAxis 
+                                                domain={[0, 100]} 
+                                                tick={{ fill: '#64748b', fontSize: 9, fontWeight: 700 }}
+                                                axisLine={false}
+                                                tickLine={false}
+                                             />
+                                             <Tooltip 
+                                                content={({ active, payload }) => {
+                                                   if (active && payload && payload.length) {
+                                                      const item = payload[0].payload;
+                                                      return (
+                                                         <div className="bg-slate-900 text-white p-3 rounded-2xl border border-slate-800 text-[10px] space-y-1.5 shadow-xl text-right font-sans">
+                                                            <p className="font-black text-yellow-300">{item.subjectName} - {item.className}</p>
+                                                            <p className="font-extrabold text-[9px] text-slate-300">متوسط درجات الاختبارات: {item.quizAverage}%</p>
+                                                            <p className="font-extrabold text-[9px] text-slate-300">نسبة إتقان المهارات: {item.skillMastery}%</p>
+                                                            <div className="border-t border-slate-800 pt-1.5 mt-1">
+                                                               <p className="font-black text-xs">المؤشر العام للتحصيل: {item.overallIndex}%</p>
+                                                            </div>
+                                                         </div>
+                                                      );
+                                                   }
+                                                   return null;
+                                                }}
+                                             />
+                                             <Bar dataKey="overallIndex" radius={[6, 6, 0, 0]}>
+                                                {classPerformanceData.map((entry: any, index: number) => (
+                                                   <Cell 
+                                                      key={`cell-${index}`} 
+                                                      fill={
+                                                         entry.overallIndex >= 85 ? '#10b981' :
+                                                         entry.overallIndex >= 70 ? '#3b82f6' :
+                                                         entry.overallIndex >= 50 ? '#f59e0b' :
+                                                         '#f43f5e'
+                                                      } 
+                                                   />
+                                                ))}
+                                             </Bar>
+                                          </BarChart>
+                                       </ResponsiveContainer>
+                                    </div>
+
+                                    {/* Professional detailed progress visual cards */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                       {classPerformanceData.map((item: any, idx: number) => (
+                                          <div key={idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col justify-between hover:border-indigo-150 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-right space-y-3">
+                                             <div className="flex justify-between items-start gap-4">
+                                                <div className="text-right">
+                                                   <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[8px] font-black rounded-md">
+                                                      {item.subjectName}
+                                                   </span>
+                                                   <h4 className="font-black text-slate-800 text-xs mt-1">{item.className}</h4>
+                                                </div>
+                                                <div className="text-left shrink-0">
+                                                   <span className="text-[9px] text-slate-400 font-bold block">مؤشر التحصيل</span>
+                                                   <span className={`text-sm font-black ${
+                                                      item.overallIndex >= 85 ? 'text-emerald-500' :
+                                                      item.overallIndex >= 70 ? 'text-blue-500' :
+                                                      item.overallIndex >= 50 ? 'text-amber-500' :
+                                                      'text-rose-500'
+                                                   }`}>
+                                                      {item.overallIndex}%
+                                                   </span>
+                                                </div>
+                                             </div>
+
+                                             <div className="space-y-1.5 border-t border-slate-150 pt-2 text-right">
+                                                <div className="flex justify-between items-center text-[9px] text-slate-500 font-bold">
+                                                   <span>متوسط التحصيل الورقي/الآلي:</span>
+                                                   <span className="font-extrabold text-slate-700 font-mono">{item.quizAverage}%</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-[9px] text-slate-500 font-bold">
+                                                   <span>نسبة تفعيل المهارات:</span>
+                                                   <span className="font-extrabold text-slate-700 font-mono">{item.skillMastery}%</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                   <div 
+                                                      className={`h-full rounded-full transition-all duration-500 ${
+                                                         item.overallIndex >= 85 ? 'bg-emerald-500' :
+                                                         item.overallIndex >= 70 ? 'bg-blue-500' :
+                                                         item.overallIndex >= 50 ? 'bg-amber-500' :
+                                                         'bg-rose-500'
+                                                      }`}
+                                                      style={{ width: `${item.overallIndex}%` }}
+                                                   />
+                                                </div>
+                                             </div>
+                                          </div>
+                                       ))}
+                                    </div>
+                                 </div>
+                              )}
                            </div>
+
+                           {/* List Title of recent supervision visits */}
+                           <div className="space-y-6 pt-2 text-right">
+                              <div className="flex items-center gap-3">
+                                 <div className="w-9 h-9 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
+                                    <ClipboardCheck size={18} />
+                                 </div>
+                                 <h3 className="text-lg font-black text-slate-850 bg-transparent">مراجعة تقارير الزيارات الإشرافية والتوقيع</h3>
+                              </div>
 
                            <div className="space-y-4">
                               {data.visits
@@ -1082,7 +1369,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                    const percentage = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
 
                                    return (
-                                      <div key={visit.id} className="bg-white p-6 rounded-[32px] border border-slate-150 shadow-sm space-y-4 relative overflow-hidden group hover:border-indigo-200 transition-all flex flex-col justify-between">
+                                      <div key={visit.id} className="bg-white p-6 rounded-3xl border border-slate-150 shadow-sm space-y-4 relative overflow-hidden group hover:border-indigo-200 transition-all flex flex-col justify-between">
                                          <div>
                                             <div className="flex justify-between items-start">
                                                <div>
@@ -1090,11 +1377,20 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                                      <Calendar size={12} className="text-slate-300" />
                                                      <span className="text-[10px] font-bold text-slate-400">{visit.date}</span>
                                                   </div>
-                                                  <h4 className="font-black text-slate-800 text-lg">زيارة: {visit.lessonTitle}</h4>
+                                                  <h4 className="font-black text-slate-805 text-lg">زيارة: {visit.lessonTitle}</h4>
                                                   <p className="text-[10px] font-black text-indigo-600">المشرف المزار: {visit.supervisorName}</p>
                                                </div>
-                                               <div className={`text-2xl font-black ${percentage >= 85 ? 'text-emerald-500' : 'text-amber-500'}`}>
-                                                  {percentage}%
+                                               <div className="flex flex-col items-end">
+                                                  <div className={`text-xl md:text-2xl font-black tracking-tighter ${percentage >= 85 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                                     {percentage}%
+                                                  </div>
+                                                  <button 
+                                                     type="button"
+                                                     onClick={() => setExpandedVisitId(expandedVisitId === visit.id ? null : visit.id)}
+                                                     className="text-[10px] font-black text-indigo-605 text-indigo-600 bg-indigo-50/50 hover:bg-indigo-600 hover:text-white px-2.5 py-1 rounded-lg mt-1 transition-all"
+                                                  >
+                                                     {expandedVisitId === visit.id ? 'إخفاء التقويم الإشرافي' : 'تفاصيل بنود التقييم'}
+                                                  </button>
                                                </div>
                                             </div>
                                             
@@ -1104,6 +1400,61 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                                </div>
                                                {visit.notes && <p className="text-[11px] text-slate-500 font-bold bg-slate-50 p-4 rounded-xl border border-slate-100 italic">" {visit.notes} "</p>}
                                             </div>
+
+                                            <AnimatePresence>
+                                               {expandedVisitId === visit.id && (
+                                                  <motion.div 
+                                                     initial={{ height: 0, opacity: 0 }}
+                                                     animate={{ height: "auto", opacity: 1 }}
+                                                     exit={{ height: 0, opacity: 0 }}
+                                                     className="overflow-hidden mt-4 pt-4 border-t border-slate-100 space-y-4 text-right"
+                                                  >
+                                                     <h5 className="text-[11px] font-black text-indigo-805 uppercase tracking-widest flex items-center gap-1">
+                                                        <Activity size={12} />
+                                                        تفاصيل بنود التقييم والدرجات المرصودة من المشرف:
+                                                     </h5>
+                                                     {(() => {
+                                                        const rubric = data.rubrics?.find(r => r.id === visit.rubricId);
+                                                        if (!rubric) return <p className="text-[10px] text-slate-400 font-bold">لم يتم العثور على نموذج بنود هذا التقويم أو لم يرتبط بنموذج.</p>;
+                                                        
+                                                        return (
+                                                           <div className="space-y-3">
+                                                              {rubric.categories.map(cat => {
+                                                                 const catItems = cat.items;
+                                                                 return (
+                                                                    <div key={cat.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2.5">
+                                                                       <h6 className="font-extrabold text-[11px] text-slate-805 border-b border-indigo-100/30 pb-1.5">{cat.title}</h6>
+                                                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                          {catItems.map(item => {
+                                                                             const val = visit.evaluationData?.[item.id];
+                                                                             return (
+                                                                                <div key={item.id} className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100 text-[10px]">
+                                                                                   <span className="font-black text-slate-600 max-w-[180px]">{item.title}</span>
+                                                                                   {val ? (
+                                                                                      <span className={`px-2 py-0.5 rounded font-black ${
+                                                                                         val === 4 ? 'bg-emerald-50 text-emerald-600' :
+                                                                                         val === 3 ? 'bg-blue-50 text-blue-600' :
+                                                                                         val === 2 ? 'bg-amber-50 text-amber-600' :
+                                                                                         'bg-rose-50 text-rose-600'
+                                                                                      }`}>
+                                                                                         {SCORE_LABELS[val]} ({Math.round((val / 4) * 100)}%)
+                                                                                      </span>
+                                                                                   ) : (
+                                                                                      <span className="text-slate-300 font-bold italic">غير مرصود</span>
+                                                                                   )}
+                                                                                </div>
+                                                                             );
+                                                                          })}
+                                                                       </div>
+                                                                    </div>
+                                                                 );
+                                                              })}
+                                                           </div>
+                                                        );
+                                                     })()}
+                                                  </motion.div>
+                                               )}
+                                            </AnimatePresence>
                                          </div>
 
                                          {/* Signature segment */}
@@ -1135,13 +1486,14 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                    );
                                 })}
                               {data.visits.filter(v => v.teacherId === activeTeacherId).length === 0 && (
-                                 <div className="py-20 text-center bg-white rounded-[40px] border border-dashed border-slate-100">
+                                 <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-100">
                                     <p className="text-slate-3s0 font-black text-slate-450">لم يتم رصد زيارات إشرافية لك حتى الآن</p>
                                  </div>
                               )}
                            </div>
                         </div>
                      </div>
+                   </div>
                    ) : teacherTab === 'quizzes' ? (
                      /* ========================================================= */
                      /* TEACHER QUIZZES AND SKILLS VIEW                           */
@@ -1156,14 +1508,14 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                         </div>
 
                         {/* List of quizzes with average scores and signature */}
-                        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+                        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                            <h4 className="text-base font-black text-slate-800">تفاصيل الاختبارات وتوقيع المعلم الموثق</h4>
                            
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               {teacherQuizzes.map(quiz => {
                                  const quizClassIds = quiz.classIds || [];
                                  const totalStudents = data.students.filter(s => quizClassIds.includes(s.classId) && !s.isArchived);
-                                 const results = data.quizResults?.filter(r => r.quizId === quiz.id) || [];
+                                 const results = data.quizResults?.filter(r => !r.isArchived && r.quizId === quiz.id) || [];
                                  const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length) : 0;
                                  
                                  // Check sig for active teacher
@@ -1180,6 +1532,115 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                              </span>
                                           </div>
                                           <p className="text-[10px] text-slate-400 font-bold mt-1">المادة: {quiz.subjectName || 'عام'} - حضور: {results.length} من {totalStudents.length}</p>
+
+                                          <div className="mt-4 flex flex-row-reverse justify-between items-center w-full gap-2">
+                                             <button 
+                                                type="button"
+                                                onClick={() => setExpandedQuizId(expandedQuizId === quiz.id ? null : quiz.id)}
+                                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-lg transition-all flex items-center gap-1 border border-indigo-100 flex-1 justify-center"
+                                             >
+                                                {expandedQuizId === quiz.id ? 'إخفاء كشف الدرجات' : 'كشف درجات الطلاب'}
+                                             </button>
+                                             <button 
+                                                type="button"
+                                                onClick={() => setExpandedAnalysisQuizId(expandedAnalysisQuizId === quiz.id ? null : quiz.id)}
+                                                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-black rounded-lg transition-all flex items-center gap-1 border border-amber-100 flex-1 justify-center"
+                                             >
+                                                <PieChart size={12} />
+                                                {expandedAnalysisQuizId === quiz.id ? 'إخفاء التحليل' : 'تحليل الإجابات'}
+                                             </button>
+                                          </div>
+
+                                          <AnimatePresence>
+                                             {expandedAnalysisQuizId === quiz.id && (
+                                                <motion.div 
+                                                   initial={{ height: 0, opacity: 0 }}
+                                                   animate={{ height: "auto", opacity: 1 }}
+                                                   exit={{ height: 0, opacity: 0 }}
+                                                   className="overflow-hidden mt-4 pt-4 border-t border-slate-150 space-y-4 text-right"
+                                                >
+                                                   <h5 className="text-[11px] font-black text-slate-805 flex items-center gap-1 mb-2">
+                                                      <BarChart2 size={12} />
+                                                      تحليل الإجابات والأسئلة (كم طالب لكل خيار):
+                                                   </h5>
+                                                   <div className="max-h-80 overflow-y-auto pr-1 space-y-4">
+                                                      {quiz.questions.map((q, qIndex) => (
+                                                         <div key={q.id} className="bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                                            <p className="text-[10px] font-bold text-slate-800 mb-2">{qIndex + 1}. {q.text}</p>
+                                                            <div className="space-y-1.5">
+                                                               {q.options.map((opt, optIndex) => {
+                                                                  const respondents = results.filter(r => r.answers && r.answers[qIndex] === optIndex).length;
+                                                                  const isCorrect = q.correctAnswerIndex === optIndex;
+                                                                  const percentage = results.length > 0 ? Math.round((respondents / results.length) * 100) : 0;
+                                                                  
+                                                                  return (
+                                                                     <div key={optIndex} className="relative w-full bg-white border border-slate-100 rounded-lg overflow-hidden flex items-center p-1.5 text-[9px] min-h-[28px]">
+                                                                        <div className={`absolute right-0 top-0 bottom-0 opacity-20 -z-0 ${isCorrect ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${percentage}%` }}></div>
+                                                                        <span className="relative z-10 w-full flex justify-between px-1">
+                                                                           <span className={`font-bold flex items-center gap-1 ${isCorrect ? 'text-emerald-700' : 'text-slate-600'}`}>
+                                                                              {isCorrect && <CheckCircle2 size={10} />}
+                                                                              {opt}
+                                                                           </span>
+                                                                           <span className="font-extrabold text-slate-500">{respondents} طالباً ({percentage}%)</span>
+                                                                        </span>
+                                                                     </div>
+                                                                  )
+                                                               })}
+                                                            </div>
+                                                         </div>
+                                                      ))}
+                                                   </div>
+                                                </motion.div>
+                                             )}
+                                          </AnimatePresence>
+
+                                          <AnimatePresence>
+                                             {expandedQuizId === quiz.id && (
+                                                <motion.div 
+                                                   initial={{ height: 0, opacity: 0 }}
+                                                   animate={{ height: "auto", opacity: 1 }}
+                                                   exit={{ height: 0, opacity: 0 }}
+                                                   className="overflow-hidden mt-4 pt-4 border-t border-slate-150 space-y-3 text-right"
+                                                >
+                                                   <h5 className="text-[11px] font-black text-slate-805 flex items-center gap-1">
+                                                      <Users size={12} />
+                                                      كشف درجات طلاب الفصول المرتبطة بالاختبار:
+                                                   </h5>
+                                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                                                      {totalStudents.map(student => {
+                                                         const scoreObj = results.find(r => r.studentId === student.id);
+                                                         return (
+                                                            <div key={student.id} className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100 text-[10px]">
+                                                               <div>
+                                                                  <span className="font-extrabold text-slate-800">{student.name}</span>
+                                                                  <span className="text-[8px] text-slate-400 font-bold block">
+                                                                      الصف: {(() => { const sCls = data.classes.find(c => c.id === student.classId); return data.grades.find(g => g.id === sCls?.gradeId)?.name; })() || 'عام'} - الفصل: {data.classes.find(c => c.id === student.classId)?.name}
+                                                                  </span>
+                                                               </div>
+                                                               {scoreObj ? (
+                                                                  <span className={`px-2.5 py-1 rounded font-black ${
+                                                                     scoreObj.score >= 85 ? 'bg-emerald-50 text-emerald-600' :
+                                                                     scoreObj.score >= 50 ? 'bg-blue-50 text-blue-600' :
+                                                                     'bg-rose-50 text-rose-600'
+                                                                  }`}>
+                                                                     {scoreObj.score}% 
+                                                                     <span className="text-[8px] ml-1 opacity-80">
+                                                                        ({scoreObj.score >= 85 ? 'متميز' : scoreObj.score >= 50 ? 'مجتاز' : 'يحتاج رعاية'})
+                                                                     </span>
+                                                                  </span>
+                                                               ) : (
+                                                                  <span className="px-2 py-1 bg-slate-50 text-slate-300 font-black rounded">غائب / لم يختبر</span>
+                                                               )}
+                                                            </div>
+                                                         );
+                                                      })}
+                                                      {totalStudents.length === 0 && (
+                                                         <p className="text-[10px] text-slate-300 italic text-center col-span-2">لا يوجد فصول أو طلاب مرتبطين بهذا الاختبار.</p>
+                                                      )}
+                                                   </div>
+                                                </motion.div>
+                                             )}
+                                          </AnimatePresence>
                                        </div>
 
                                        <div className="mt-6 pt-4 border-t border-slate-150 flex items-center justify-between flex-wrap gap-4">
@@ -1210,29 +1671,155 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                  );
                               })}
                               {teacherQuizzes.length === 0 && (
-                                 <div className="col-span-full py-8 text-center text-slate-400 italic">
-                                   لا توجد اختبارات منشورة لفصولك حتى الآن.
-                                 </div>
+                                 <div className="col-span-full py-10 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100/50"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><BrainCircuit size={24} className="text-slate-300" /></div><h4 className="text-xs font-black text-slate-700 tracking-tight mb-1">لا توجد اختبارات</h4><p className="text-[10px] font-semibold text-slate-400">لا توجد اختبارات منشورة لفصولك حتى الآن</p></div>
                               )}
                            </div>
                         </div>
 
                         {/* List of skills for teacher */}
-                        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
-                           <h4 className="text-base font-black text-slate-800">قائمة مهارات الإتقان في فصولك</h4>
+                        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                           <h4 className="text-base font-black text-slate-800">قائمة مهارات الإتقان ورصد التقييمات للفصول المسندة</h4>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {data.skills
                                 .filter(sk => teacherSubjects.some(ts => ts.name === sk.subjectName || ts.name.includes(sk.subjectName || '')))
                                 .map(skill => {
+                                   const isAssessing = selectedSkillToAssess === skill.id;
+                                   const matchingSubject = data.subjects.find(s => s.name === skill.subjectName || s.name.includes(skill.subjectName || ''));
+                                   const skillClasses = data.classes.filter(c => {
+                                      if (c.isArchived) return false;
+                                      if (matchingSubject) {
+                                         return c.gradeId === matchingSubject.gradeId && 
+                                                (!matchingSubject.classIds || matchingSubject.classIds.length === 0 || matchingSubject.classIds.includes(c.id)) &&
+                                                teacherClasses.some(tc => tc.id === c.id);
+                                      }
+                                      return teacherClasses.some(tc => tc.id === c.id);
+                                   });
+
                                    return (
-                                      <div key={skill.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-4">
-                                         <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center font-black text-sm shrink-0">
-                                            {skill.questions.length}س
-                                         </div>
+                                      <div key={skill.id} className="p-5 bg-slate-50 border border-slate-100 rounded-3xl space-y-4 hover:border-indigo-150 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between text-right">
                                          <div>
-                                            <h5 className="font-extrabold text-slate-800 text-sm leading-tight">{skill.name}</h5>
-                                            <p className="text-[10px] text-slate-400 font-bold">المادة: {skill.subjectName || 'غير محدد'}</p>
+                                            <div className="flex justify-between items-start gap-4">
+                                               <div className="flex items-center gap-4">
+                                                  <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center font-black text-sm shrink-0">
+                                                     {skill.questions?.length || 0}س
+                                                  </div>
+                                                  <div>
+                                                     <h5 className="font-extrabold text-slate-800 text-sm leading-tight">{skill.name}</h5>
+                                                     <p className="text-[10px] text-slate-400 font-bold mt-0.5">المادة: {skill.subjectName || 'غير محدد'}</p>
+                                                  </div>
+                                               </div>
+                                               <button 
+                                                  type="button"
+                                                  onClick={() => {
+                                                     if (isAssessing) {
+                                                        setSelectedSkillToAssess(null);
+                                                     } else {
+                                                        setSelectedSkillToAssess(skill.id);
+                                                        if (skillClasses.length > 0) {
+                                                           setActiveClassToAssess(skillClasses[0].id);
+                                                        } else {
+                                                           setActiveClassToAssess('');
+                                                        }
+                                                     }
+                                                  }}
+                                                  className={`px-3 py-1.5 rounded-xl font-black text-[10px] transition-all flex items-center gap-1 border shrink-0 ${
+                                                     isAssessing 
+                                                     ? 'bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border-rose-100/30' 
+                                                     : 'bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-100 shadow-sm'
+                                                  }`}
+                                               >
+                                                  {isAssessing ? (
+                                                     <>
+                                                        <X size={12} />
+                                                        <span>إلغاء الرصد</span>
+                                                     </>
+                                                  ) : (
+                                                     <>
+                                                        <PenTool size={11} />
+                                                        <span>الرصد والتقويم</span>
+                                                     </>
+                                                  )}
+                                               </button>
+                                            </div>
                                          </div>
+
+                                         <AnimatePresence>
+                                            {isAssessing && (
+                                               <motion.div 
+                                                  initial={{ height: 0, opacity: 0 }}
+                                                  animate={{ height: "auto", opacity: 1 }}
+                                                  exit={{ height: 0, opacity: 0 }}
+                                                  className="overflow-hidden mt-4 pt-4 border-t border-slate-200 space-y-4 text-right"
+                                               >
+                                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-100">
+                                                     <span className="text-[11px] font-black text-slate-800 flex items-center gap-1 shrink-0">
+                                                        🎒 اختر فصل الرصد المسند للمهارة:
+                                                     </span>
+                                                     <select 
+                                                        value={activeClassToAssess}
+                                                        onChange={(e) => setActiveClassToAssess(e.target.value)}
+                                                        className="bg-slate-50 border border-slate-150 rounded-xl px-3 py-1.5 text-xs font-black text-slate-800 ml-1 outline-none font-sans"
+                                                     >
+                                                        {skillClasses.map(c => (
+                                                           <option key={c.id} value={c.id}>{c.name}</option>
+                                                        ))}
+                                                        {skillClasses.length === 0 && (
+                                                           <option value="">لا يوجد فصول مسندة للمهارة</option>
+                                                        )}
+                                                     </select>
+                                                  </div>
+
+                                                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                     {(() => {
+                                                        const studentsInSelectedClass = data.students.filter(s => s.classId === activeClassToAssess && !s.isArchived);
+                                                        if (studentsInSelectedClass.length === 0) {
+                                                           return <p className="text-[10px] text-slate-400 font-bold text-center py-4">لا يوجد طلاب في هذا الفصل.</p>;
+                                                        }
+                                                        return studentsInSelectedClass.map(student => {
+                                                           const evalKey = `${student.id}-${skill.id}-${academicYear}`;
+                                                           const scoreVal = evaluations[evalKey]?.score;
+                                                           return (
+                                                              <div key={student.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3 rounded-2xl border border-slate-100 gap-2.5">
+                                                                 <span className="text-[11px] font-extrabold text-slate-800">{student.name}</span>
+                                                                 <div className="flex gap-1 flex-wrap self-end sm:self-auto">
+                                                                    {[
+                                                                       { score: 'mastered', label: 'متقن', color: 'bg-green-600 text-white', hover: 'hover:bg-green-50 hover:text-green-600' },
+                                                                       { score: 'advanced', label: 'متقدم', color: 'bg-blue-600 text-white', hover: 'hover:bg-blue-50 hover:text-blue-600' },
+                                                                       { score: 'accepted', label: 'مقبول', color: 'bg-amber-500 text-white', hover: 'hover:bg-amber-50 hover:text-amber-500' },
+                                                                       { score: 'weak', label: 'ضعيف', color: 'bg-orange-600 text-white', hover: 'hover:bg-orange-50 hover:text-orange-600' },
+                                                                       { score: 'very-weak', label: 'غير مجتاز', color: 'bg-red-600 text-white', hover: 'hover:bg-red-50 hover:text-red-600' }
+                                                                    ].map((btn, i) => {
+                                                                       const isActive = scoreVal === btn.score;
+                                                                       return (
+                                                                          <button
+                                                                             key={i}
+                                                                             type="button"
+                                                                             onClick={async () => {
+                                                                                try {
+                                                                                   await firestoreService.saveEvaluation(student.id, skill.id, btn.score as any, '', academicYear);
+                                                                                } catch (err: any) {
+                                                                                   alert('حدث خطأ أثناء رصد المهارة: ' + err.message);
+                                                                                }
+                                                                             }}
+                                                                             className={`px-2 py-1 rounded-lg text-[9px] font-black transition-all border ${
+                                                                                isActive 
+                                                                                ? `${btn.color} border-transparent ring-2` 
+                                                                                : `bg-slate-50 text-slate-500 border-slate-100 ${btn.hover}`
+                                                                             }`}
+                                                                          >
+                                                                             {btn.label}
+                                                                          </button>
+                                                                       );
+                                                                    })}
+                                                                 </div>
+                                                              </div>
+                                                           );
+                                                        });
+                                                     })()}
+                                                  </div>
+                                               </motion.div>
+                                            )}
+                                         </AnimatePresence>
                                       </div>
                                    );
                                 })}
@@ -1254,7 +1841,7 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                            </div>
                         </div>
 
-                        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+                        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                            <div className="overflow-x-auto">
                               <table className="w-full text-right border-collapse">
                                  <thead>
@@ -1269,7 +1856,17 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                  <tbody>
                                     {weakStudentsList.map(item => (
                                        <tr key={item.student.id} className="border-b border-slate-50 text-xs">
-                                          <td className="py-4 font-black text-slate-800">{item.student.name}</td>
+                                          <td className="py-4 font-black text-slate-800">
+                                              <div className="flex flex-col">
+                                                 <span>{item.student.name}</span>
+                                                 {item.hasThreeConsecutiveFailures && (
+                                                    <span className="text-[9px] text-rose-500 font-black mt-1 flex items-center gap-1">
+                                                       <AlertCircle size={10} />
+                                                       إخفاق متتالي (3 مهارات)
+                                                    </span>
+                                                 )}
+                                              </div>
+                                           </td>
                                           <td className="py-4 font-bold text-slate-400">
                                              {data.classes.find(c => c.id === item.student.classId)?.name || 'غير محدد'}
                                           </td>
@@ -1285,9 +1882,9 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                           <td className="py-4 text-xs font-bold text-slate-500 max-w-sm truncate whitespace-normal">
                                              {item.weakSkills.length > 0 ? (
                                                 <div className="flex flex-wrap gap-1.5">
-                                                   {item.weakSkills.map((skName, idx) => (
+                                                   {item.weakSkills.map((sk: any, idx: number) => (
                                                       <span key={idx} className="bg-rose-50 text-rose-700 text-[9px] font-black px-2 py-0.5 rounded-md border border-rose-100/30">
-                                                        {skName}
+                                                        {sk.name}
                                                       </span>
                                                    ))}
                                                 </div>
@@ -1296,9 +1893,14 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
                                              )}
                                           </td>
                                           <td className="py-4">
-                                             <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-black">
-                                               ملاحظة وإرشاد ذوي الأولوية
-                                             </span>
+                                             <button 
+                                                type="button"
+                                                onClick={() => setSupportPlanStudent(item)}
+                                                className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5 border border-rose-100/30 shadow-sm"
+                                             >
+                                                <FileCheck size={11} />
+                                                إعداد ومتابعة خطة الدعم
+                                             </button>
                                           </td>
                                        </tr>
                                     ))}
@@ -1319,6 +1921,103 @@ export function ExternalPortal({ data, evaluations, academicYear, onClose, onLog
              )}
           </div>
        </main>
+
+        {/* Support Plan Modal */}
+        <AnimatePresence>
+           {supportPlanStudent && (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[9999]" dir="rtl">
+                 <motion.div 
+                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                    className="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl border border-slate-100 space-y-6 max-h-[90vh] overflow-y-auto"
+                 >
+                    <div className="flex justify-between items-center bg-indigo-50 -mx-8 -mt-8 p-8 border-b border-indigo-100">
+                       <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100">
+                             <FileCheck size={28} />
+                          </div>
+                          <div>
+                             <h3 className="text-xl font-black text-indigo-900">مشروع خطة الدعم والتدخل الأكاديمي</h3>
+                             <p className="text-xs font-bold text-indigo-600 mt-0.5">للطالب: {supportPlanStudent.student.name}</p>
+                          </div>
+                       </div>
+                       <button onClick={() => setSupportPlanStudent(null)} className="w-10 h-10 rounded-full bg-white text-slate-400 flex items-center justify-center hover:text-rose-500 transition-colors shadow-sm">
+                          <X size={20} />
+                       </button>
+                    </div>
+
+                    <div className="space-y-6 py-4">
+                       <section className="space-y-3">
+                          <h4 className="font-black text-slate-800 text-sm flex items-center gap-2">
+                             <AlertCircle size={16} className="text-rose-500" />
+                             تحليل الاحتياج التعليمي الحالي
+                          </h4>
+                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                             <p className="text-xs text-slate-600 leading-relaxed font-bold">
+                                بناءً على المتابعة الرقمية، يواجه الطالب صعوبة في إتقان 
+                                <span className="text-rose-600 mx-1">({supportPlanStudent.weakSkills.length})</span> 
+                                مهارات أساسية.
+                                {supportPlanStudent.hasThreeConsecutiveFailures && (
+                                   <span className="block mt-2 p-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] border border-rose-100/50">
+                                      🚨 ملاحظة حرجة: تم رصد إخفاق متتالي في 3 مهارات أو أكثر في {supportPlanStudent.failedSubjects.join('، ')}. يوصى بتدخل علاجي فوري وتواصل مع ولي الأمر.
+                                   </span>
+                                )}
+                             </p>
+                          </div>
+                       </section>
+
+                       <section className="space-y-3">
+                          <h4 className="font-black text-slate-800 text-sm flex items-center gap-2">
+                             <TrendingUp size={16} className="text-indigo-600" />
+                             التدخلات المقترحة والجدول الزمني
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             {[
+                                { title: 'حصص التوجيه الفردي', description: 'تخصيص 10 دقائق في نهاية كل حصة للمراجعة المباشرة.' },
+                                { title: 'أوراق عمل تفاعلية', description: 'توفير أنشطة مبسطة تركز على المهارات غير المتقنة.' },
+                                { title: 'تحفيز الأقران', description: 'إشراك الطالب مع زملاء متميزين في مجموعات تعاونية.' },
+                                { title: 'التواصل مع الأسرة', description: 'إشعار ولي الأمر بالضعف وتقديم خطة للمتابعة المنزلية.' }
+                             ].map((plan, i) => (
+                                <div key={i} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-all">
+                                   <h5 className="text-[11px] font-black text-slate-800 mb-1">{plan.title}</h5>
+                                   <p className="text-[10px] text-slate-400 font-medium leading-relaxed">{plan.description}</p>
+                                </div>
+                             ))}
+                          </div>
+                       </section>
+
+                       <section className="space-y-3">
+                          <h4 className="font-black text-slate-800 text-sm">ملاحظات المعلم الخاصة بالخطة</h4>
+                          <textarea 
+                             placeholder="أضف أي تفاصيل إضافية للخطة العلاجية هنا..."
+                             className="w-full h-32 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-50 resize-none"
+                          />
+                       </section>
+                    </div>
+
+                    <div className="flex gap-4 pt-4 border-t border-slate-100">
+                       <button 
+                          onClick={() => {
+                             alert('تم حفظ خطة الدعم ومشاركتها مع الإرشاد الطلابي وولي الأمر');
+                             setSupportPlanStudent(null);
+                          }}
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white h-16 rounded-2xl font-black text-sm flex items-center justify-center gap-3 shadow-xl shadow-indigo-100 transition-all"
+                       >
+                          <Save size={18} />
+                          اعتماد وحفظ الخطة العلاجية
+                       </button>
+                       <button 
+                          onClick={() => window.print()}
+                          className="px-6 bg-slate-100 hover:bg-slate-200 text-slate-500 h-16 rounded-2xl font-black text-sm transition-all"
+                       >
+                          طباعة PDF
+                       </button>
+                    </div>
+                 </motion.div>
+              </div>
+           )}
+        </AnimatePresence>
     </div>
   );
 }
