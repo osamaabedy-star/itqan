@@ -71,9 +71,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 export const firestoreService = {
   async saveEvaluation(studentId: string, skillId: string, score: EvaluationScore, note: string = '', academicYear: string = '2024-2025', questionScores?: Record<number, number>) {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('User must be signed in to save evaluation');
-
+    const userId = auth.currentUser?.uid || 'anonymous';
+    
     const evaluationId = `${studentId}_${skillId}_${academicYear}`;
     const path = `evaluations/${evaluationId}`;
     
@@ -132,7 +131,7 @@ export const firestoreService = {
         await signInAnonymously(auth);
       }
     } catch (error) {
-      console.error('Anonymous login error:', error);
+      console.warn('Anonymous login error, proceeding in offline mode (requires no authentication in rules):', error);
     }
   },
 

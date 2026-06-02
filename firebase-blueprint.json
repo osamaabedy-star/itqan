@@ -227,6 +227,22 @@
         "signatureText": { "type": "string" }
       },
       "required": ["id", "quizId", "teacherId", "teacherName", "signed", "signedAt"]
+    },
+    "SupportPlan": {
+      "title": "SupportPlan",
+      "description": "Support plan details for students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "selectedItems": { "type": "array" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "studentId", "studentName", "teacherId", "teacherName", "selectedItems", "createdAt"]
     }
   },
   "firestore": {
@@ -281,6 +297,10 @@
     "/quizSignatures/{signatureId}": {
       "schema": "QuizSignature",
       "description": "Signatures certifying teacher review of quizzes"
+    },
+    "/supportPlans/{supportPlanId}": {
+      "schema": "SupportPlan",
+      "description": "Support plans for students needing assistance"
     }
   }
 }

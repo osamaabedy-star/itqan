@@ -104,14 +104,20 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
   const quizCardRef = useRef<HTMLDivElement>(null);
   const [isExportingImage, setIsExportingImage] = useState(false);
 
-  const teacherDirectClasses = data.classes.filter(c => !c.isArchived && filterTeacherId && c.teacherIds?.includes(filterTeacherId));
+  const teacherSubjects = data.subjects.filter(s => !s.isArchived && (!filterTeacherId || s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId)));
+  const teacherSubjectIds = teacherSubjects.map(s => s.id);
+
+  const teacherDirectClasses = data.classes.filter(c => 
+    !c.isArchived && filterTeacherId && (
+      c.teacherIds?.includes(filterTeacherId) || 
+      teacherSubjects.some(s => s.gradeId === c.gradeId && ((!s.classIds || s.classIds.includes(c.id)) || s.classId === c.id))
+    )
+  );
   const teacherDirectClassIds = teacherDirectClasses.map(c => c.id);
   const teacherDirectGradeIds = teacherDirectClasses.map(c => c.gradeId);
 
   const teacherGrades = Array.from(new Set([
-    ...data.subjects
-      .filter(s => !s.isArchived && (!filterTeacherId || s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId)))
-      .map(s => s.gradeId),
+    ...teacherSubjects.map(s => s.gradeId),
     ...teacherDirectGradeIds
   ])).filter(Boolean);
 
@@ -121,7 +127,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
 
   const classes = data.classes.filter(c => !c.isArchived && 
     (selectedGradeId === '' || c.gradeId === selectedGradeId) && 
-    (!filterTeacherId || teacherGrades.includes(c.gradeId) || teacherDirectClassIds.includes(c.id) || c.teacherIds?.includes(filterTeacherId))
+    (!filterTeacherId || teacherDirectClassIds.includes(c.id))
   );
   
   const currentClass = data.classes.find(c => c.id === selectedClassId);
@@ -130,6 +136,12 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
   const filteredStudents = useMemo(() => {
     const list = data.students.filter(student => {
       if (student.isArchived) return false;
+      
+      // Teacher Isolation: only show students in classes belonging to this teacher
+      if (filterTeacherId && !teacherDirectClassIds.includes(student.classId)) {
+        return false;
+      }
+
       if (selectedClassId) {
         if (student.classId !== selectedClassId) return false;
       } else if (selectedGradeId) {
@@ -201,10 +213,6 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
     }
   }, [data.students, data.classes, data.quizResults, evaluations, academicYear, selectedGradeId, selectedClassId, studentSearchTerm, studentSortBy]);
   
-  const teacherSubjectIds = data.subjects
-    .filter(s => !s.isArchived && (!filterTeacherId || s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId)))
-    .map(s => s.id);
-
   const classQuizzes = data.quizzes.filter(q => {
     if (q.isArchived) return false;
     if (selectedGradeId !== '' && q.gradeId !== selectedGradeId) return false;
@@ -691,10 +699,11 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                          <select 
                            value={filterTeacherId || ''}
                            onChange={(e) => onFilterTeacherChange && onFilterTeacherChange(e.target.value)}
-                           className="w-full lg:w-[130px] h-10 bg-slate-50 border border-slate-100 rounded-xl px-8 font-black text-slate-700 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-[11px]"
+                           disabled={!!filterTeacherId}
+                           className="w-full lg:w-[130px] h-10 bg-slate-50 border border-slate-100 rounded-xl px-8 font-black text-slate-700 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-[11px] disabled:opacity-70 disabled:cursor-not-allowed"
                          >
-                            <option value="">جميع المعلمين</option>
-                            {data.teachers.filter(t => !t.isArchived).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            {!filterTeacherId && <option value="">جميع المعلمين</option>}
+                            {data.teachers.filter(t => !t.isArchived && (!filterTeacherId || t.id === filterTeacherId)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                          </select>
                          <User size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-600 transition-colors" />
                       </div>
@@ -773,10 +782,10 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                     <>
                        {/* High Level Stats */}
                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                          <StatCard label="إجمالي الاختبارات" value={data.quizzes.filter(q => !q.isArchived).length} icon={<BrainCircuit className="text-indigo-600" />} color="bg-indigo-50" />
-                          <StatCard label="عمليات الرصد" value={data.quizResults?.filter(r => !r.isArchived && activeQuizIds.has(r.quizId)).length || 0} icon={<CheckCircle2 className="text-green-600" />} color="bg-green-50" />
-                          <StatCard label="متوسط الإنجاز العام" value={`${calculateQuizAchievement('', data.students.filter(s => !s.isArchived))}%`} icon={<Trophy className="text-yellow-600" />} color="bg-yellow-50" />
-                          <StatCard label="فصول نشطة" value={data.classes.filter(c => !c.isArchived).length} icon={<Users className="text-blue-600" />} color="bg-blue-50" />
+                          <StatCard label="إجمالي الاختبارات" value={classQuizzes.length} icon={<BrainCircuit className="text-indigo-600" />} color="bg-indigo-50" />
+                          <StatCard label="عمليات الرصد" value={data.quizResults?.filter(r => !r.isArchived && activeQuizIds.has(r.quizId) && (!filterTeacherId || classQuizzes.some(q => q.id === r.quizId))).length || 0} icon={<CheckCircle2 className="text-green-600" />} color="bg-green-50" />
+                          <StatCard label="متوسط الإنجاز العام" value={`${calculateQuizAchievement('', data.students.filter(s => !s.isArchived && (!filterTeacherId || classQuizzes.some(q => q.id === s.id || true))))}%`} icon={<Trophy className="text-yellow-600" />} color="bg-yellow-50" />
+                          <StatCard label="فصول نشطة" value={classes.length} icon={<Users className="text-blue-600" />} color="bg-blue-50" />
                        </div>
 
                          {/* Professional Charts Row */}

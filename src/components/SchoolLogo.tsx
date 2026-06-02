@@ -11,6 +11,10 @@ interface SchoolLogoProps {
 export function SchoolLogo({ className = '', size = 80, showText = true, variant = 'light', imageUrl }: SchoolLogoProps) {
   const [imgError, setImgError] = React.useState(false);
 
+  React.useEffect(() => {
+    setImgError(false);
+  }, [imageUrl]);
+
   // We use 31 rays fanning out symmetrically to form the exact domed sunburst
   const raysCount = 31;
   const startAngle = -168;

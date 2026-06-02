@@ -115,6 +115,7 @@ export interface Rubric {
   name: string;
   categories: RubricCategory[];
   isArchived?: boolean;
+  isPeerRubric?: boolean;
 }
 
 export interface Visit {
@@ -142,6 +143,8 @@ export interface Visit {
   signatureName?: string;
   signatureData?: string;
   signedAt?: string;
+  visitType?: 'supervisory' | 'peer';
+  visitorTeacherId?: string;
 }
 
 export interface QuizResult {
@@ -164,6 +167,9 @@ export interface ExternalProfile {
   name: string;
   role: 'teacher' | 'supervisor';
   linkedTeacherId?: string; // Only for teachers, to see their specific data
+  supervisorType?: 'general' | 'stage' | 'classes';
+  allowedGradeIds?: string[];
+  allowedClassIds?: string[];
   isArchived?: boolean;
   createdAt: any;
 }
@@ -177,6 +183,25 @@ export interface QuizSignature {
   signedAt: string;
   signatureData?: string;
   signatureText?: string;
+}
+
+export interface SupportPlanItem {
+  key: string;
+  title: string;
+  durationValue: string;
+  dateValue: string;
+  isCompleted: boolean;
+}
+
+export interface SupportPlan {
+  id: string; // e.g., 'support_plan_' + studentId
+  studentId: string;
+  studentName: string;
+  teacherId: string;
+  teacherName: string;
+  selectedItems: SupportPlanItem[];
+  notes?: string;
+  createdAt: string;
 }
 
 export interface AppData {
@@ -193,4 +218,5 @@ export interface AppData {
   externalProfiles?: ExternalProfile[];
   quizSignatures?: QuizSignature[];
   settings?: any[];
+  supportPlans?: SupportPlan[];
 }

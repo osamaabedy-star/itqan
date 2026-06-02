@@ -124,6 +124,16 @@ service cloud.firestore {
              (data.createdAt is string || data.createdAt is timestamp);
     }
 
+    function isValidSupportPlan(data) {
+      return data.keys().hasAll(['id', 'studentId', 'studentName', 'teacherId', 'teacherName', 'selectedItems', 'createdAt']) &&
+             data.id is string &&
+             isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() <= 200 &&
+             isValidId(data.teacherId) &&
+             data.teacherName is string && data.teacherName.size() <= 200 &&
+             data.selectedItems is list;
+    }
+
     // --- Collection Routes ---
 
     match /externalProfiles/{profileId} {
@@ -196,6 +206,12 @@ service cloud.firestore {
     match /visits/{visitId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn() && isValidVisit(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /supportPlans/{supportPlanId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidSupportPlan(incoming());
       allow delete: if isAdmin();
     }
   }

@@ -81,12 +81,14 @@ import { StudentProfile } from './components/StudentProfile';
 import { Visits } from './components/Visits';
 import { QuizLogin } from './components/QuizLogin';
 import { TeacherProfile } from './components/TeacherProfile';
+import { TeacherDashboard } from './components/TeacherDashboard';
+import { normalizeNumerals } from './lib/stringUtils';
 
 import { ProfessionalReports } from './components/ProfessionalReports';
 import { QuizReport } from './components/QuizReport';
 import { MonitoringMatrix } from './components/quick-eval/MonitoringMatrix';
 import { ConfirmationModal } from './components/ui/ConfirmationModal';
-import { ExternalPortal } from './components/ExternalPortal';
+
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -243,22 +245,21 @@ export default function App() {
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
+
+  useEffect(() => {
+    if (externalProfile) {
+      localStorage.setItem('itqan-external-profile', JSON.stringify(externalProfile));
+    } else {
+      localStorage.removeItem('itqan-external-profile');
+    }
+  }, [externalProfile]);
+
   const [studentSession, setStudentSession] = useState<Student | null>(() => {
     try {
       const saved = localStorage.getItem('itqan-student-session');
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
-
-  useEffect(() => {
-    if (externalProfile) {
-      localStorage.setItem('itqan-external-profile', JSON.stringify(externalProfile));
-      localStorage.setItem('external_id', externalProfile.id);
-    } else {
-      localStorage.removeItem('itqan-external-profile');
-      localStorage.removeItem('external_id');
-    }
-  }, [externalProfile]);
 
   useEffect(() => {
     if (studentSession) {
@@ -294,7 +295,7 @@ export default function App() {
         }
       }
 
-      const input = loginIdInput.trim();
+      const input = normalizeNumerals(loginIdInput.trim());
       
       if (loginRole === 'teacher' || loginRole === 'supervisor') {
         const p = (await firestoreService.getExternalProfile(input)) as ExternalProfile | null;
@@ -308,7 +309,7 @@ export default function App() {
             setLoginError(`رقم الهوية المدخل مسجل كـ (${profileRoleNameAr}) وليس كـ (${roleNameAr})`);
           }
         } else {
-          setLoginError('عذراً، رقم الهوية هذا غير مسجل في النظام');
+          setLoginError('عذراً، رقم الهوية هذا غير مسجل في النظام كـ ' + (loginRole === 'teacher' ? 'معلم' : 'مشرف'));
         }
       } else if (loginRole === 'student') {
         // Fetch students directly to avoid race condition with state population immediately after anonymous login
@@ -541,6 +542,7 @@ export default function App() {
       firestoreService.subscribeToCollection('externalProfiles', (data) => setAppData(prev => ({ ...prev, externalProfiles: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('quizSignatures', (data) => setAppData(prev => ({ ...prev, quizSignatures: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('settings', (data) => setAppData(prev => ({ ...prev, settings: data.length > 0 ? data : [] }))),
+      firestoreService.subscribeToCollection('supportPlans', (data) => setAppData(prev => ({ ...prev, supportPlans: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToEvaluations((newEvals) => setEvaluations(newEvals))
     ];
 
@@ -1013,21 +1015,22 @@ export default function App() {
             />
           )}
 
-          {view === 'external-portal' && (
-            <ExternalPortal 
-               data={appData}
-               evaluations={evaluations}
-               academicYear={academicYear}
-               activeTerm={activeTerm}
-               onClose={() => {
-                 setExternalProfileState(null);
-                 setView('login');
-               }}
-               onLogout={() => {
-                 setExternalProfileState(null);
-                 setView('login');
-               }}
-            />
+          {view === 'external-portal' && externalProfile && (
+            <div className="w-full h-full flex flex-col flex-1 select-none">
+              <TeacherDashboard 
+                 data={appData}
+                 evaluations={evaluations}
+                 academicYear={academicYear}
+                 displayYear={baseAcademicYear}
+                 activeTerm={activeTerm}
+                 externalProfile={externalProfile}
+                 onLogout={() => {
+                   setExternalProfileState(null);
+                   setView('login');
+                 }}
+                 calculatePerformance={calculatePerformance}
+              />
+            </div>
           )}
 
           {view === 'student-portal' && studentSession && (
@@ -1502,6 +1505,7 @@ export default function App() {
                onSelectStudent={setSelectedStudent}
                allSkills={appData.skills}
                allSubjects={appData.subjects}
+               academicYear={academicYear}
                onClose={() => { 
                 if (studentSession) {
                    setView('student-portal');

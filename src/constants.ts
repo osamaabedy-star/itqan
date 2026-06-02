@@ -58,5 +58,6 @@ export const INITIAL_DATA: AppData = {
   ],
   visits: [],
   quizResults: [],
-  externalProfiles: []
+  externalProfiles: [],
+  supportPlans: []
 };

@@ -31,6 +31,7 @@ import {
   Download,
   Upload,
   Info,
+  Menu,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -47,11 +48,12 @@ import {
 } from "../types";
 import { firestoreService } from "../services/firestoreService";
 import { APP_STAGES } from "../constants";
+import { normalizeNumerals } from "../lib/stringUtils";
 import { ImageUploader } from "./ui/ImageUploader";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
 
 function parseBulkLine(line: string, type: "teachers" | "students" = "students") {
-  const text = line.trim();
+  const text = normalizeNumerals(line.trim());
   if (!text) return null;
   
   const parts = text.split(/[,;\t]/).map((p) => p.trim()).filter(p => p);
@@ -160,8 +162,8 @@ function TabCard({
   title?: string;
 }) {
   return (
-    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-      {title && <h4 className="font-black text-slate-800 mb-4">{title}</h4>}
+    <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm transition-all duration-200 hover:shadow-md">
+      {title && <h4 className="font-black text-slate-800 text-sm md:text-base mb-4">{title}</h4>}
       {children}
     </div>
   );
@@ -188,7 +190,16 @@ export function Management({
     | "archive"
     | "rubrics"
     | "external_profiles"
+    | "system_settings"
   >("grades");
+
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  const selectTab = (tab: typeof activeTab) => {
+    setActiveTab(tab);
+    resetForms();
+    setIsMobileSidebarOpen(false);
+  };
 
   // Confirmation State
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -223,6 +234,7 @@ export function Management({
         name: rubricName,
         categories: rubricCategories,
         isArchived: false,
+        isPeerRubric: isPeerRubric,
       });
       resetForms();
     } finally {
@@ -344,6 +356,7 @@ export function Management({
   const [rubricCategories, setRubricCategories] = useState<RubricCategory[]>(
     [],
   );
+  const [isPeerRubric, setIsPeerRubric] = useState(false);
   const [newCatTitle, setNewCatTitle] = useState("");
   const [newItemTitle, setNewItemTitle] = useState("");
   const [activeCatIndex, setActiveCatIndex] = useState<number | null>(null);
@@ -532,6 +545,9 @@ export function Management({
     "teacher" | "supervisor"
   >("teacher");
   const [extProfileTeacherId, setExtProfileTeacherId] = useState("");
+  const [supervisorType, setSupervisorType] = useState<"general"|"stage"|"classes">("general");
+  const [supervisorAllowedGradeIds, setSupervisorAllowedGradeIds] = useState<string[]>([]);
+  const [supervisorAllowedClassIds, setSupervisorAllowedClassIds] = useState<string[]>([]);
 
   // Filtering States
   const [localFilterTeacherId, setLocalFilterTeacherId] = useState(
@@ -1107,12 +1123,16 @@ export function Management({
     setCurrentQCorrect(0);
     setRubricName("");
     setRubricCategories([]);
+    setIsPeerRubric(false);
     setNewCatTitle("");
     setNewItemTitle("");
     setExtProfileId("");
     setExtProfileName("");
     setExtProfileRole("teacher");
     setExtProfileTeacherId("");
+    setSupervisorType("general");
+    setSupervisorAllowedGradeIds([]);
+    setSupervisorAllowedClassIds([]);
     setEditingId(null);
     setParsedTeachers([]);
     setParsedStudents([]);
@@ -1597,6 +1617,9 @@ export function Management({
         role: extProfileRole,
         linkedTeacherId:
           extProfileRole === "teacher" ? extProfileTeacherId : null,
+        supervisorType: extProfileRole === "supervisor" ? supervisorType : null,
+        allowedGradeIds: extProfileRole === "supervisor" ? supervisorAllowedGradeIds : [],
+        allowedClassIds: extProfileRole === "supervisor" ? supervisorAllowedClassIds : [],
         isArchived: false,
         createdAt: new Date(),
       });
@@ -1666,11 +1689,15 @@ export function Management({
     } else if (type === "rubrics") {
       setRubricName(item.name);
       setRubricCategories(item.categories || []);
+      setIsPeerRubric(!!item.isPeerRubric);
     } else if (type === "external_profiles") {
       setExtProfileId(item.id);
       setExtProfileName(item.name);
       setExtProfileRole(item.role);
       setExtProfileTeacherId(item.linkedTeacherId || "");
+      setSupervisorType(item.supervisorType || "general");
+      setSupervisorAllowedGradeIds(item.allowedGradeIds || []);
+      setSupervisorAllowedClassIds(item.allowedClassIds || []);
     }
   };
 
@@ -1822,31 +1849,53 @@ export function Management({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white w-full max-w-6xl h-[85vh] rounded-[48px] shadow-2xl flex overflow-hidden border-8 border-white/20 font-sans relative"
+        className="bg-white w-full max-w-6xl h-[94vh] md:h-[85vh] rounded-3xl md:rounded-[48px] shadow-2xl flex overflow-hidden border-4 md:border-8 border-white/20 font-sans relative"
         dir="rtl"
       >
         {/* Close Button overlay */}
         <button
           onClick={onClose}
-          className="absolute top-8 left-8 w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all z-20 group"
+          className="hidden md:flex absolute top-8 left-8 w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all z-20 group"
         >
           <X size={24} className="group-hover:rotate-90 transition-transform" />
         </button>
 
+        {/* Mobile Sidebar Overlay Backdrop */}
+        {isMobileSidebarOpen && (
+          <div 
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-[2px] z-40 md:hidden"
+          />
+        )}
+
         {/* Sidebar */}
-        <aside className="w-64 bg-slate-50 border-l border-slate-200 p-6 flex flex-col gap-6 relative overflow-y-auto shrink-0 scrollbar-hide">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-lg">
-              <ShieldCheck size={28} />
+        <aside className={`
+          fixed md:relative inset-y-0 right-0 w-72 md:w-64 bg-slate-50 border-l border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto shrink-0 scrollbar-hide transition-all duration-300 z-50 md:translate-x-0 md:mt-0
+          ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}
+        `}>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-lg shrink-0">
+                <ShieldCheck size={28} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-900 leading-none">
+                  الإدارة
+                </h2>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                  Mastery Management
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900 leading-none">
-                الإدارة
-              </h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                Mastery Management
-              </p>
-            </div>
+            
+            {/* Close Sidebar Button for Mobile Drawer */}
+            <button
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="md:hidden w-10 h-10 rounded-xl bg-slate-200/65 flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-500 transition-all active:scale-95 shrink-0"
+              title="إغلاق القائمة"
+            >
+              <X size={18} />
+            </button>
           </div>
 
           <nav className="flex flex-col gap-10">
@@ -1856,28 +1905,19 @@ export function Management({
               </p>
               <TabButton
                 active={activeTab === "grades"}
-                onClick={() => {
-                  setActiveTab("grades");
-                  resetForms();
-                }}
+                onClick={() => selectTab("grades")}
                 icon={<ListRestart size={18} />}
                 label="المراحل والصفوف"
               />
               <TabButton
                 active={activeTab === "classes"}
-                onClick={() => {
-                  setActiveTab("classes");
-                  resetForms();
-                }}
+                onClick={() => selectTab("classes")}
                 icon={<Building size={18} />}
                 label="الفصول الدراسية"
               />
               <TabButton
                 active={activeTab === "subjects"}
-                onClick={() => {
-                  setActiveTab("subjects");
-                  resetForms();
-                }}
+                onClick={() => selectTab("subjects")}
                 icon={<BookOpen size={18} />}
                 label="إسناد المواد"
               />
@@ -1889,19 +1929,13 @@ export function Management({
               </p>
               <TabButton
                 active={activeTab === "teachers"}
-                onClick={() => {
-                  setActiveTab("teachers");
-                  resetForms();
-                }}
+                onClick={() => selectTab("teachers")}
                 icon={<Users size={18} />}
                 label="المعلمون"
               />
               <TabButton
                 active={activeTab === "students"}
-                onClick={() => {
-                  setActiveTab("students");
-                  resetForms();
-                }}
+                onClick={() => selectTab("students")}
                 icon={<UserPlus size={18} />}
                 label="الطلاب"
               />
@@ -1913,37 +1947,25 @@ export function Management({
               </p>
               <TabButton
                 active={activeTab === "skills"}
-                onClick={() => {
-                  setActiveTab("skills");
-                  resetForms();
-                }}
+                onClick={() => selectTab("skills")}
                 icon={<Star size={18} />}
                 label="بنك المهارات"
               />
               <TabButton
                 active={activeTab === "quizzes"}
-                onClick={() => {
-                  setActiveTab("quizzes");
-                  resetForms();
-                }}
+                onClick={() => selectTab("quizzes")}
                 icon={<BrainCircuit size={18} />}
                 label="الاختبارات الذكية"
               />
               <TabButton
                 active={activeTab === "rubrics"}
-                onClick={() => {
-                  setActiveTab("rubrics");
-                  resetForms();
-                }}
+                onClick={() => selectTab("rubrics")}
                 icon={<ShieldCheck size={18} />}
                 label="معايير الزيارات"
               />
               <TabButton
                 active={activeTab === "external_profiles"}
-                onClick={() => {
-                  setActiveTab("external_profiles");
-                  resetForms();
-                }}
+                onClick={() => selectTab("external_profiles")}
                 icon={<ShieldCheck size={18} />}
                 label="صلاحيات الدخول"
               />
@@ -1955,19 +1977,13 @@ export function Management({
               </p>
               <TabButton
                 active={activeTab === "archive"}
-                onClick={() => {
-                  setActiveTab("archive");
-                  resetForms();
-                }}
+                onClick={() => selectTab("archive")}
                 icon={<Archive size={18} />}
                 label="الأرشفة والترفيع"
               />
               <TabButton
                 active={activeTab === "system_settings"}
-                onClick={() => {
-                  setActiveTab("system_settings");
-                  resetForms();
-                }}
+                onClick={() => selectTab("system_settings")}
                 icon={<Settings size={18} />}
                 label="شعار النظام"
               />
@@ -1986,7 +2002,46 @@ export function Management({
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto scrollbar-hide">
+        <main className="flex-1 p-4 md:p-8 overflow-y-auto scrollbar-hide">
+          {/* Mobile Top Header Bar */}
+          <div className="flex md:hidden items-center justify-between mb-4 bg-gradient-to-l from-slate-900 to-indigo-955 bg-gradient-to-l from-slate-900 to-indigo-950 text-white p-4 rounded-2xl shadow-md border border-white/5 shrink-0">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center hover:bg-white/20 active:scale-95 transition-all text-white border border-white/10"
+                title="افتح القائمة"
+              >
+                <Menu size={20} />
+              </button>
+              <div>
+                <h3 className="font-black text-xs">إدارة مدرسة التميز</h3>
+                <p className="text-[9px] text-indigo-200 mt-0.5 font-bold">
+                  {activeTab === "grades" && "المراحل والصفوف"}
+                  {activeTab === "classes" && "الفصول الدراسية"}
+                  {activeTab === "subjects" && "إسناد المواد"}
+                  {activeTab === "teachers" && "المعلمون"}
+                  {activeTab === "students" && "الطلاب"}
+                  {activeTab === "skills" && "بنك المهارات"}
+                  {activeTab === "quizzes" && "الاختبارات الذكية"}
+                  {activeTab === "rubrics" && "معايير الزيارات"}
+                  {activeTab === "external_profiles" && "صلاحيات الدخول"}
+                  {activeTab === "archive" && "الأرشفة والترفيع"}
+                  {activeTab === "system_settings" && "شعار النظام"}
+                </p>
+              </div>
+            </div>
+            
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-300 flex items-center justify-center hover:bg-rose-500/20 active:scale-95 transition-all border border-rose-500/10"
+              title="إغلاق الإدارة"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
           <div className="mb-4 flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-100 shadow-sm">
             {/* Grade Selector */}
             <select
@@ -2211,7 +2266,7 @@ export function Management({
                         <input
                           type="text"
                           value={teacherNationalId}
-                          onChange={(e) => setTeacherNationalId(e.target.value)}
+                          onChange={(e) => setTeacherNationalId(normalizeNumerals(e.target.value))}
                           placeholder="مثال: 1029384756"
                           className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold outline-none text-right focus:ring-2 focus:ring-indigo-100"
                         />
@@ -2247,7 +2302,7 @@ export function Management({
                             <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
                             تم التعرف على ({parsedTeachers.length}) معلمين من الملف:
                           </p>
-                          <div className="max-h-40 overflow-y-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
+                          <div className="max-h-40 overflow-y-auto overflow-x-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
                             <table className="w-full text-xs text-right">
                               <thead className="bg-slate-50 border-b border-emerald-100/60 text-slate-500 sticky top-0">
                                 <tr>
@@ -2550,7 +2605,7 @@ export function Management({
                             <input 
                               type="text"
                               value={studentNationalId}
-                              onChange={(e) => setStudentNationalId(e.target.value)}
+                              onChange={(e) => setStudentNationalId(normalizeNumerals(e.target.value))}
                               placeholder="رقم الهوية الوطنية..."
                               className="w-full h-12 bg-white border border-slate-200 rounded-xl px-4 font-bold outline-none focus:ring-2 focus:ring-indigo-100 shadow-sm"
                             />
@@ -2586,7 +2641,7 @@ export function Management({
                                 <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
                                 تم التعرف على ({parsedStudents.length}) طلاب من الملف:
                               </p>
-                              <div className="max-h-40 overflow-y-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
+                              <div className="max-h-40 overflow-y-auto overflow-x-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
                                 <table className="w-full text-xs text-right">
                                   <thead className="bg-slate-50 border-b border-emerald-100/60 text-slate-500 sticky top-0">
                                     <tr>
@@ -3982,6 +4037,30 @@ export function Management({
                      placeholder="ارفع أو ضع رابط الشعار"
                   />
                 </div>
+
+                <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
+                  <h4 className="text-sm font-black tracking-tighter text-slate-800">
+                    صلاحيات المشرف الفني (الزيارات التبادلية)
+                  </h4>
+                  <div className="flex gap-3 items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <input 
+                      type="checkbox"
+                      id="allowSupervisorPeerVisits"
+                      checked={data.settings?.[0]?.allowSupervisorPeerVisits ?? false}
+                      onChange={async (e) => {
+                         const settingId = data.settings?.[0]?.id || "default";
+                         await firestoreService.saveItem("settings", settingId, {
+                            ...data.settings?.[0],
+                            allowSupervisorPeerVisits: e.target.checked
+                         });
+                      }}
+                      className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="allowSupervisorPeerVisits" className="text-xs font-black text-slate-705 select-none cursor-pointer">
+                      السماح للمشرفين بالاطلاع على الزيارات التبادلية ونقل الأثر ونقاشاتها بين المعلمين
+                    </label>
+                  </div>
+                </div>
               </div>
             </SectionContainer>
           )}
@@ -4156,6 +4235,19 @@ export function Management({
                     </button>
                   </div>
 
+                  <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 w-fit">
+                    <input 
+                      type="checkbox"
+                      id="isPeerRubric"
+                      checked={isPeerRubric}
+                      onChange={(e) => setIsPeerRubric(e.target.checked)}
+                      className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="isPeerRubric" className="text-xs font-black text-slate-700 select-none cursor-pointer">
+                      هذا النموذج خاص بالزيارات التبادلية ونقل الأثر البيني بين المعلمين (Peer Visit Rubric)
+                    </label>
+                  </div>
+
                   <div className="flex gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100">
                     <input
                       type="text"
@@ -4283,9 +4375,14 @@ export function Management({
                           className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4 hover:border-indigo-100 transition-all"
                         >
                           <div>
-                            <h4 className="font-black text-slate-800">
-                              {rubric.name}
-                            </h4>
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <h4 className="font-black text-slate-800">
+                                {rubric.name}
+                              </h4>
+                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-black ${rubric.isPeerRubric ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-indigo-50 text-indigo-700 border border-indigo-100'}`}>
+                                {rubric.isPeerRubric ? 'زيارة تبادلية بين المعلمين' : 'زيارة إشرافية'}
+                              </span>
+                            </div>
                             <p className="text-[10px] text-slate-400 font-bold">
                               {rubric.categories.length} أقسام |{" "}
                               {rubric.categories.reduce(
@@ -4418,6 +4515,77 @@ export function Management({
                             ))}
                         </select>
                       </div>
+                    )}
+                    {extProfileRole === "supervisor" && (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase mr-2">
+                            صلاحية المشرف
+                          </label>
+                          <select
+                            value={supervisorType}
+                            onChange={(e) => setSupervisorType(e.target.value as "general"|"stage"|"classes")}
+                            className="w-full h-12 bg-white border border-slate-200 rounded-xl px-4 font-black outline-none"
+                          >
+                            <option value="general">مشرف عام (جميع الصلاحيات)</option>
+                            <option value="stage">مشرف مرحلة</option>
+                            <option value="classes">مشرف صفوف</option>
+                          </select>
+                        </div>
+                        {supervisorType === "stage" && (
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase mr-2">
+                              المراحل الدراسية المخصصة
+                            </label>
+                            <div className="h-32 overflow-y-auto bg-white border border-slate-200 rounded-xl p-2 space-y-1 w-full text-xs">
+                              {data.grades.filter(g => !g.isArchived).map(g => (
+                                <label key={g.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                                  <input 
+                                    type="checkbox"
+                                    checked={supervisorAllowedGradeIds.includes(g.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSupervisorAllowedGradeIds([...supervisorAllowedGradeIds, g.id]);
+                                      } else {
+                                        setSupervisorAllowedGradeIds(supervisorAllowedGradeIds.filter(id => id !== g.id));
+                                      }
+                                    }}
+                                  />
+                                  <span className="font-bold">{g.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {supervisorType === "classes" && (
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase mr-2">
+                              الصفوف الدراسية المخصصة
+                            </label>
+                            <div className="h-32 overflow-y-auto bg-white border border-slate-200 rounded-xl p-2 space-y-1 w-full text-xs">
+                              {data.classes.filter(c => !c.isArchived).map(c => {
+                                const grd = data.grades.find(g => g.id === c.gradeId);
+                                return (
+                                  <label key={c.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                                    <input 
+                                      type="checkbox"
+                                      checked={supervisorAllowedClassIds.includes(c.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSupervisorAllowedClassIds([...supervisorAllowedClassIds, c.id]);
+                                        } else {
+                                          setSupervisorAllowedClassIds(supervisorAllowedClassIds.filter(id => id !== c.id));
+                                        }
+                                      }}
+                                    />
+                                    <span className="font-bold">{c.name} {grd ? `(${grd.name})` : ''}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                   <button

@@ -13,9 +13,10 @@ interface QuizPlayerProps {
   onSelectStudent?: (student: Student) => void;
   allSkills: any[];
   allSubjects: any[];
+  academicYear?: string;
 }
 
-export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onClose, onSelectStudent, allSkills, allSubjects }: QuizPlayerProps) {
+export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onClose, onSelectStudent, allSkills, allSubjects, academicYear = '2024-2025' }: QuizPlayerProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
   const [showResult, setShowResult] = useState(false);
@@ -59,6 +60,8 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
           answers: newAnswers,
           subjectId: quiz.subjectIds?.[0] || '',
           subjectIds: quiz.subjectIds
+        }).catch(err => {
+          console.error("Error saving quiz result:", err);
         });
 
         // INTELLIGENT LINK: If score >= 85%, auto-master skills for this subject
@@ -79,8 +82,10 @@ export function QuizPlayer({ quiz, student, classStudents, quizResults = [], onC
                  skill.id, 
                  'mastered', 
                  `رصد تلقائي: تم اجتياز اختبار "${quiz.title}" بنسبة ${score}%`,
-                 '2024-2025'
-              );
+                 academicYear
+              ).catch(err => {
+                console.error("Error saving automatic evaluation:", err);
+              });
            });
         }
       }
