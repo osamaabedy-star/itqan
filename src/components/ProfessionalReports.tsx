@@ -704,11 +704,11 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                          <select 
                            value={filterTeacherId || ''}
                            onChange={(e) => onFilterTeacherChange && onFilterTeacherChange(e.target.value)}
-                           disabled={!!filterTeacherId}
+                           disabled={!!filterTeacherId && !onFilterTeacherChange}
                            className="w-full lg:w-[130px] h-10 bg-slate-50 border border-slate-100 rounded-xl px-8 font-black text-slate-700 outline-none appearance-none cursor-pointer focus:ring-2 ring-indigo-100 transition-all text-[11px] disabled:opacity-70 disabled:cursor-not-allowed"
                          >
-                            {!filterTeacherId && <option value="">جميع المعلمين</option>}
-                            {data.teachers.filter(t => !t.isArchived && (!filterTeacherId || t.id === filterTeacherId)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            {(onFilterTeacherChange || !filterTeacherId) && <option value="">جميع المعلمين</option>}
+                            {data.teachers.filter(t => !t.isArchived && (!filterTeacherId || !!onFilterTeacherChange || t.id === filterTeacherId)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                          </select>
                          <User size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-600 transition-colors" />
                       </div>
@@ -2085,7 +2085,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                   className="space-y-6"
                 >
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                       {data.teachers.filter(t => !t.isArchived && (!filterTeacherId || t.id === filterTeacherId)).map(teacher => {
+                       {data.teachers.filter(t => !t.isArchived && (!filterTeacherId || !!onFilterTeacherChange || t.id === filterTeacherId)).map(teacher => {
                           const teacherSubjects = data.subjects.filter(s => !s.isArchived && (s.teacherId === teacher.id || s.teacherIds?.includes(teacher.id)));
                           const teacherClasses = data.classes.filter(c => !c.isArchived && (c.teacherIds?.includes(teacher.id) || teacherSubjects.some(ts => ts.gradeId === c.gradeId)));
                           const teacherSkills = data.skills.filter(sk => teacherSubjects.some(sub => sub.id === sk.subjectId || sub.name === sk.subjectName));

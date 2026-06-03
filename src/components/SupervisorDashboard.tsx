@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   TrendingUp,
   BrainCircuit,
-  Award
+  Award,
+  User
 } from 'lucide-react';
 import { AppData, Evaluations, ExternalProfile } from '../types';
 import { ProfessionalReports } from './ProfessionalReports';
@@ -55,6 +56,21 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Teacher Selector */}
+          <div className="relative group hidden lg:block">
+            <select 
+              value={filterTeacherId}
+              onChange={(e) => setFilterTeacherId(e.target.value)}
+              className="h-10 bg-slate-50 border border-slate-100 rounded-xl pr-9 pl-4 font-black transition-all outline-none focus:ring-2 focus:ring-emerald-100 appearance-none text-[11px] cursor-pointer"
+            >
+              <option value="">جميع المعلمين</option>
+              {data.teachers.filter(t => !t.isArchived).map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <User size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-emerald-600 transition-colors" />
+          </div>
+
           <button 
             onClick={onToggleTerm}
             className="hidden md:flex items-center gap-2 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl text-emerald-700 hover:bg-emerald-100 transition-colors"
