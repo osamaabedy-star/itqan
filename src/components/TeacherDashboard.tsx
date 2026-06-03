@@ -160,31 +160,31 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <StatCard 
-                    icon={<Users className="text-indigo-600" size={20} />} 
-                    label="إجمالي الطلاب" 
+                    icon={<Users className="text-indigo-600" size={16} />} 
+                    label="الطلاب" 
                     value={myStudents.length.toString()} 
-                    subValue="طالب مسجل"
+                    subValue="نشط"
                     color="indigo" 
                   />
                   <StatCard 
-                    icon={<BookOpen className="text-emerald-600" size={20} />} 
-                    label="الفصول الدراسية" 
+                    icon={<BookOpen className="text-emerald-600" size={16} />} 
+                    label="الفصول" 
                     value={myClasses.length.toString()} 
-                    subValue="فصل نشط"
+                    subValue="نشط"
                     color="emerald" 
                   />
                   <StatCard 
-                    icon={<Star className="text-amber-600" size={20} />} 
-                    label="متوسط الأداء" 
+                    icon={<Star className="text-amber-600" size={16} />} 
+                    label="الأداء" 
                     value={`${averagePerformance}%`} 
-                    subValue="تحصيل المهارات"
+                    subValue="إجمالي"
                     color="amber" 
                   />
                   <StatCard 
-                    icon={<Zap className="text-sky-600" size={20} />} 
-                    label="اختبارات نشطة" 
+                    icon={<Zap className="text-sky-600" size={16} />} 
+                    label="الاختبارات" 
                     value={myQuizzes.length.toString()} 
-                    subValue="بنك الأسئلة"
+                    subValue="حالي"
                     color="sky" 
                   />
                 </div>
@@ -453,14 +453,14 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, subValue, color
   };
 
   return (
-    <div className={`p-6 rounded-[2.5rem] border shadow-sm ${colorMap[color]} flex flex-col gap-1 transition-transform hover:-translate-y-1`}>
-      <div className="w-10 h-10 rounded-2xl bg-white/80 border border-white flex items-center justify-center shadow-inner mb-2">
+    <div className={`p-4 rounded-3xl border shadow-sm ${colorMap[color]} flex flex-col gap-1 transition-transform hover:-translate-y-1`}>
+      <div className="w-8 h-8 rounded-xl bg-white/80 border border-white flex items-center justify-center shadow-inner mb-1">
         {icon}
       </div>
-      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
-      <div className="flex items-baseline gap-2">
-         <h4 className="text-3xl font-black">{value}</h4>
-         <span className="text-[10px] font-bold opacity-60">{subValue}</span>
+      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
+      <div className="flex items-baseline gap-1">
+         <h4 className="text-xl font-black">{value}</h4>
+         <span className="text-[9px] font-bold opacity-60">{subValue}</span>
       </div>
     </div>
   );
