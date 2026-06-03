@@ -38,11 +38,12 @@ interface TeacherDashboardProps {
   activeTerm: "term1" | "term2";
   externalProfile: ExternalProfile;
   onLogout: () => void;
+  onToggleTerm: () => void;
   calculatePerformance: (classId: string, subjectId?: string) => number;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ 
-  data, evaluations, academicYear, displayYear, activeTerm, externalProfile, onLogout, calculatePerformance 
+  data, evaluations, academicYear, displayYear, activeTerm, externalProfile, onLogout, onToggleTerm, calculatePerformance 
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'classes' | 'visits' | 'reports'>('overview');
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -87,6 +88,43 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     return Math.round(validPerfs.reduce((a, b) => a + b, 0) / validPerfs.length);
   }, [myClasses, calculatePerformance]);
 
+  const weakStudents = useMemo(() => {
+    return myStudents.filter(s => {
+      const results = data.quizResults.filter(r => r.studentId === s.id && !r.isArchived);
+      if (results.length === 0) return false;
+      const avg = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+      return avg < 50;
+    });
+  }, [myStudents, data.quizResults]);
+
+  const skillPerformanceData = useMemo(() => {
+    const skillStats = mySubjects.map(sub => {
+      const subjectSkills = data.skills.filter(sk => !sk.isArchived && (sk.subjectId === sub.id || (sk.subjectName === sub.name && sk.gradeId === sub.gradeId)));
+      const studentIds = data.students.filter(st => !st.isArchived && st.classId && (sub.classId === st.classId || sub.classIds?.includes(st.classId))).map(st => st.id);
+      
+      let total = 0;
+      let count = 0;
+      studentIds.forEach(stId => {
+        subjectSkills.forEach(sk => {
+          const ev = evaluations[`${stId}-${sk.id}-${academicYear}`];
+          if (ev) {
+            count++;
+            if (ev.score === 'mastered') total += 100;
+            else if (ev.score === 'advanced') total += 85;
+            else if (ev.score === 'accepted') total += 70;
+            else if (ev.score === 'weak') total += 40;
+            else total += 20;
+          }
+        });
+      });
+      return {
+        name: sub.name,
+        performance: count > 0 ? Math.round(total / count) : 0
+      };
+    }).filter(s => s.performance > 0);
+    return skillStats;
+  }, [mySubjects, data.skills, data.students, evaluations, academicYear]);
+
   return (
     <div className="h-full flex flex-col bg-[#FDFCF9] font-sans" dir="rtl">
       {/* Header */}
@@ -102,6 +140,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <button 
+            onClick={onToggleTerm}
+            className="hidden md:flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-xl text-indigo-700 hover:bg-indigo-100 transition-colors"
+          >
+            <Calendar size={14} />
+            <span className="text-xs font-black">{activeTerm === 'term1' ? 'الفصل الدراسي الأول' : 'الفصل الدراسي الثاني'}</span>
+          </button>
           <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-100 px-4 py-2 rounded-xl">
              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
              <span className="text-xs font-black text-slate-700">{externalProfile.name}</span>
@@ -145,8 +190,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="max-w-6xl mx-auto space-y-6">
           
           <AnimatePresence mode="wait">
             {activeTab === 'overview' && (
@@ -155,7 +200,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                className="space-y-8"
+                className="space-y-6"
               >
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -189,10 +234,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Classes & Subjects */}
-                  <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 space-y-6">
+                  <div className="lg:col-span-2 space-y-5">
+                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-5">
                       <div className="flex items-center justify-between">
                          <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
                            <Book className="text-indigo-500" size={20} />

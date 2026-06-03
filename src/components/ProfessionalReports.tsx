@@ -68,10 +68,11 @@ interface ProfessionalReportsProps {
   onFilterTeacherChange?: (id: string) => void;
   onSelectTeacher?: (teacher: any) => void;
   calculatePerformance?: (classId: string, subjectId?: string) => number;
+  hideStudentDetails?: boolean;
 }
 
-export function ProfessionalReports({ data, evaluations, academicYear, displayYear, activeTerm, onSelectStudent, onClose, filterTeacherId, onFilterTeacherChange, onSelectTeacher, calculatePerformance }: ProfessionalReportsProps) {
-  const [activeTab, setActiveTab] = useState<'quizzes' | 'skills' | 'students' | 'teachers'>('quizzes');
+export function ProfessionalReports({ data, evaluations, academicYear, displayYear, activeTerm, onSelectStudent, onClose, filterTeacherId, onFilterTeacherChange, onSelectTeacher, calculatePerformance, hideStudentDetails }: ProfessionalReportsProps) {
+  const [activeTab, setActiveTab] = useState<'quizzes' | 'skills' | 'students' | 'teachers'>(hideStudentDetails ? 'teachers' : 'quizzes');
   const [selectedGradeId, setSelectedGradeId] = useState<string>('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,6 +107,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
 
   const teacherSubjects = data.subjects.filter(s => !s.isArchived && (!filterTeacherId || s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId)));
   const teacherSubjectIds = teacherSubjects.map(s => s.id);
+  const teacherSubjectNames = Array.from(new Set(teacherSubjects.map(s => s.name)));
 
   const teacherDirectClasses = data.classes.filter(c => 
     !c.isArchived && filterTeacherId && (
@@ -120,8 +122,6 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
     ...teacherSubjects.map(s => s.gradeId),
     ...teacherDirectGradeIds
   ])).filter(Boolean);
-
-  const activeQuizIds = useMemo(() => new Set(data.quizzes.filter(q => !q.isArchived && (q.term || 'term1') === activeTerm).map(q => q.id)), [data.quizzes, activeTerm]);
 
   const grades = data.grades.filter(g => !g.isArchived && (!filterTeacherId || teacherGrades.includes(g.id)));
 
@@ -217,16 +217,19 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
     if (q.isArchived) return false;
     if (selectedGradeId !== '' && q.gradeId !== selectedGradeId) return false;
     if (filterTeacherId) {
-      // Check if the quiz belongs to one of the teacher's subjects
+      // Check if the quiz belongs to one of the teacher's subjects by ID or Name
       const hasTeacherSubject = q.subjectIds?.some(id => teacherSubjectIds.includes(id)) || 
-                                teacherSubjectIds.includes((q as any).subjectId) ||
-                                data.subjects.some(s => s.name === q.subjectName && teacherSubjectIds.includes(s.id));
+                                (q as any).subjectId && teacherSubjectIds.includes((q as any).subjectId) ||
+                                (q.subjectName && teacherSubjectNames.some(tn => tn.trim() === q.subjectName?.trim()));
       if (!hasTeacherSubject) return false;
     }
-    // Only show quizzes that have been tested/evaluated by students (has results)
+    // Only show quizzes that have been tested/evaluated by students or belong to the active term
     const hasResults = data.quizResults?.some(r => !r.isArchived && r.quizId === q.id);
-    return hasResults;
+    const isTermMatch = (q.term || 'term1') === activeTerm;
+    return hasResults || isTermMatch;
   });
+
+  const activeQuizIds = useMemo(() => new Set(classQuizzes.map(q => q.id)), [classQuizzes]);
 
   const handleExportQuizCardImage = async () => {
     if (!quizCardRef.current || !selectedQuizToManage) return;
@@ -677,12 +680,14 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                       >
                          <Zap size={14} />إتقان المهارات
                       </button>
-                      <button 
-                        onClick={() => setActiveTab('students')}
-                        className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all flex justify-center flex-1 sm:flex-none items-center gap-1.5 whitespace-nowrap ${activeTab === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                         <Users size={14} />تقارير الطلاب
-                      </button>
+                      {!hideStudentDetails && (
+                        <button 
+                          onClick={() => setActiveTab('students')}
+                          className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all flex justify-center flex-1 sm:flex-none items-center gap-1.5 whitespace-nowrap ${activeTab === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                           <Users size={14} />تقارير الطلاب
+                        </button>
+                      )}
                       <button 
                         onClick={() => setActiveTab('teachers')}
                         className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all flex justify-center flex-1 sm:flex-none items-center gap-1.5 whitespace-nowrap ${activeTab === 'teachers' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -1245,90 +1250,98 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                     </div>
                            </div>
 
-                           <div className="relative z-10 max-h-[800px] overflow-y-auto pr-2 scrollbar-hide">
-                              <div className="min-w-[1200px] overflow-x-auto pb-4 scrollbar-hide">
-                                 <table className="w-full text-right border-separate border-spacing-y-4">
-                                    <thead>
-                                        <tr>
-                                           <th className="pb-4 pr-6 font-black text-slate-400 text-[11px] uppercase tracking-widest text-right">معلومات الطالب</th>
-                                           <th className="pb-4 px-4 font-black text-slate-400 text-[11px] uppercase tracking-widest text-center">معدل الاختبارات</th>
-                                           <th className="pb-4 px-4 font-black text-slate-400 text-[11px] uppercase tracking-widest text-center">معدل المهارات</th>
-                                           <th className="pb-4 px-4 font-black text-slate-400 text-[11px] uppercase tracking-widest text-center">المعدل الشامل</th>
-                                           <th className="pb-4 px-6 font-black text-slate-400 text-[11px] uppercase tracking-widest text-right w-full">تفاصيل التقييم الدراسي للمهارات والاختبارات</th>
-                                        </tr>
-                                     </thead>
-                                    <tbody>
-                                       {classStudents.map(student => {
-                                          let rawResults = data.quizResults?.filter(r => !r.isArchived && activeQuizIds.has(r.quizId) && r.studentId === student.id) || [];
-                                          if (filterTeacherId) {
-                                             rawResults = rawResults.filter(r => classQuizzes.some(q => q.id === r.quizId));
-                                          }
-                                          const latestResultsMap = new Map();
-                                          rawResults.forEach(r => {
-                                             const existing = latestResultsMap.get(r.quizId);
-                                             if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
-                                                latestResultsMap.set(r.quizId, r);
-                                             }
-                                          });
-                                          const results = Array.from(latestResultsMap.values());
-                                          const avg = results.length > 0 ? Math.round(results.reduce((acc, r) => acc + r.score, 0) / results.length) : 0;
-                                          const max = results.length > 0 ? Math.max(...results.map(r => r.score)) : 0;
-                                          const min = results.length > 0 ? Math.min(...results.map(r => r.score)) : 0;
+                            <div className="relative z-10 max-h-[800px] overflow-y-auto pr-2 scrollbar-hide">
+                               {hideStudentDetails ? (
+                                  <div className="bg-slate-50/50 p-12 rounded-3xl border border-dashed border-slate-200 text-center">
+                                     <Users size={48} className="text-slate-300 mx-auto mb-4" />
+                                     <h3 className="text-lg font-black text-slate-700">بيانات الطلاب محجوبة</h3>
+                                     <p className="text-xs text-slate-400 font-bold mt-2">تقارير الطلاب التفصيلية غير متاحة في هذا العرض الإشرافي العام.</p>
+                                  </div>
+                               ) : (
+                               <div className="min-w-[1200px] overflow-x-auto pb-4 scrollbar-hide">
+                                  <table className="w-full text-right border-separate border-spacing-y-4">
+                                     <thead>
+                                         <tr>
+                                            <th className="pb-4 pr-6 font-black text-slate-400 text-[11px] uppercase tracking-widest text-right">معلومات الطالب</th>
+                                            <th className="pb-4 px-4 font-black text-slate-400 text-[11px] uppercase tracking-widest text-center">معدل الاختبارات</th>
+                                            <th className="pb-4 px-4 font-black text-slate-400 text-[11px] uppercase tracking-widest text-center">معدل المهارات</th>
+                                            <th className="pb-4 px-4 font-black text-slate-400 text-[11px] uppercase tracking-widest text-center">المعدل الشامل</th>
+                                            <th className="pb-4 px-6 font-black text-slate-400 text-[11px] uppercase tracking-widest text-right w-full">تفاصيل التقييم الدراسي للمهارات والاختبارات</th>
+                                         </tr>
+                                      </thead>
+                                     <tbody>
+                                        {classStudents.map(student => {
+                                           let rawResults = data.quizResults?.filter(r => !r.isArchived && activeQuizIds.has(r.quizId) && r.studentId === student.id) || [];
+                                           if (filterTeacherId) {
+                                              rawResults = rawResults.filter(r => classQuizzes.some(q => q.id === r.quizId));
+                                           }
+                                           const latestResultsMap = new Map();
+                                           rawResults.forEach(r => {
+                                              const existing = latestResultsMap.get(r.quizId);
+                                              if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+                                                 latestResultsMap.set(r.quizId, r);
+                                              }
+                                           });
+                                           const results = Array.from(latestResultsMap.values());
+                                           const avg = results.length > 0 ? Math.round(results.reduce((acc, r) => acc + r.score, 0) / results.length) : 0;
+                                           const max = results.length > 0 ? Math.max(...results.map(r => r.score)) : 0;
+                                           const min = results.length > 0 ? Math.min(...results.map(r => r.score)) : 0;
 
-                                          return (
-                                             <tr key={student.id} className="group">
-                                                <td className="py-5 pr-6 bg-slate-50/50 group-hover:bg-indigo-50 group-hover:shadow-xl group-hover:shadow-indigo-500/5 transition-all rounded-r-[32px] border-y border-r border-slate-50">
-                                                   <div 
-                                                     className="flex items-center gap-4 cursor-pointer"
-                                                     onClick={() => onSelectStudent?.(student)}
-                                                   >
-                                                      <div className={`w-14 h-14 rounded-[18px] flex items-center justify-center font-black text-lg text-white shadow-lg ${avg >= 70 ? 'bg-indigo-600 shadow-indigo-100' : 'bg-slate-300'}`}>
-                                                         {student.name.charAt(0)}
-                                                      </div>
-                                                      <div>
-                                                         <p className="font-black text-slate-800 text-lg leading-tight group-hover:text-indigo-600 transition-colors">{student.name}</p>
-                                                         <p className="text-[9px] font-black text-slate-400 uppercase mt-1">كود الطالب: {student.id.substring(0, 8).toUpperCase()}</p>
-                                                      </div>
-                                                   </div>
-                                                </td>
-                                                <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-center border-y border-slate-50">
-                                                   <span className="font-black text-lg text-green-600">{max > 0 ? `${max}%` : '-'}</span>
-                                                </td>
-                                                <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-center border-y border-slate-50">
-                                                   <span className="font-black text-lg text-red-500">{min > 0 ? `${min}%` : '-'}</span>
-                                                </td>
-                                                <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-center border-y border-slate-50">
-                                                   <div className={`inline-flex px-6 py-2.5 rounded-2xl border font-black text-sm shadow-sm ${getPerformanceColor(avg)}`}>
-                                                      {avg > 0 ? `${avg}%` : 'لا بيانات'}
-                                                   </div>
-                                                </td>
-                                                <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-right rounded-l-[32px] border-y border-l border-slate-50">
-                                                   <div className="flex gap-2 flex-wrap min-w-[200px]">
-                                                      {classQuizzes.map(quiz => {
-                                                         const res = results.find(r => r.quizId === quiz.id);
-                                                         return (
-                                                            <div 
-                                                              key={quiz.id} 
-                                                              className={`px-4 py-2 rounded-xl flex flex-col items-center justify-center font-black border transition-all ${
-                                                                res ? 'bg-white border-indigo-100 text-indigo-600 shadow-sm scale-110' : 'bg-slate-100/50 border-slate-100 text-slate-300 opacity-40'
-                                                              }`}
-                                                              title={quiz.title}
-                                                            >
-                                                               <span className="text-[8px] opacity-60 mb-0.5 uppercase tracking-tighter truncate w-10 text-center">{quiz.title}</span>
-                                                               <span className="text-[11px] leading-none">{res ? `${res.score}%` : '0'}</span>
-                                                            </div>
-                                                         );
-                                                      })}
-                                                      {classQuizzes.length === 0 && <span className="text-[10px] text-slate-300 italic">لا توجد اختبارات مربوطة بالفصل</span>}
-                                                   </div>
-                                                </td>
-                                             </tr>
-                                          );
-                                       })}
-                                    </tbody>
-                                 </table>
-                              </div>
-                           </div>
+                                           return (
+                                              <tr key={student.id} className="group">
+                                                 <td className="py-5 pr-6 bg-slate-50/50 group-hover:bg-indigo-50 group-hover:shadow-xl group-hover:shadow-indigo-500/5 transition-all rounded-r-[32px] border-y border-r border-slate-50">
+                                                    <div 
+                                                      className="flex items-center gap-4 cursor-pointer"
+                                                      onClick={() => onSelectStudent?.(student)}
+                                                    >
+                                                       <div className={`w-14 h-14 rounded-[18px] flex items-center justify-center font-black text-lg text-white shadow-lg ${avg >= 70 ? 'bg-indigo-600 shadow-indigo-100' : 'bg-slate-300'}`}>
+                                                          {student.name.charAt(0)}
+                                                       </div>
+                                                       <div>
+                                                          <p className="font-black text-slate-800 text-lg leading-tight group-hover:text-indigo-600 transition-colors">{student.name}</p>
+                                                          <p className="text-[9px] font-black text-slate-400 uppercase mt-1">كود الطالب: {student.id.substring(0, 8).toUpperCase()}</p>
+                                                       </div>
+                                                    </div>
+                                                 </td>
+                                                 <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-center border-y border-slate-50">
+                                                    <span className="font-black text-lg text-green-600">{max > 0 ? `${max}%` : '-'}</span>
+                                                 </td>
+                                                 <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-center border-y border-slate-50">
+                                                    <span className="font-black text-lg text-red-500">{min > 0 ? `${min}%` : '-'}</span>
+                                                 </td>
+                                                 <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-center border-y border-slate-50">
+                                                    <div className={`inline-flex px-6 py-2.5 rounded-2xl border font-black text-sm shadow-sm ${getPerformanceColor(avg)}`}>
+                                                       {avg > 0 ? `${avg}%` : 'لا بيانات'}
+                                                    </div>
+                                                 </td>
+                                                 <td className="py-5 px-6 bg-slate-50/50 group-hover:bg-indigo-50 text-right rounded-l-[32px] border-y border-l border-slate-50">
+                                                    <div className="flex gap-2 flex-wrap min-w-[200px]">
+                                                       {classQuizzes.map(quiz => {
+                                                          const res = results.find(r => r.quizId === quiz.id);
+                                                          return (
+                                                             <div 
+                                                               key={quiz.id} 
+                                                               className={`px-4 py-2 rounded-xl flex flex-col items-center justify-center font-black border transition-all ${
+                                                                 res ? 'bg-white border-indigo-100 text-indigo-600 shadow-sm scale-110' : 'bg-slate-100/50 border-slate-100 text-slate-300 opacity-40'
+                                                               }`}
+                                                               title={quiz.title}
+                                                             >
+                                                                <span className="text-[8px] opacity-60 mb-0.5 uppercase tracking-tighter truncate w-10 text-center">{quiz.title}</span>
+                                                                <span className="text-[11px] leading-none">{res ? `${res.score}%` : '0'}</span>
+                                                             </div>
+                                                          );
+                                                       })}
+                                                       {classQuizzes.length === 0 && <span className="text-[10px] text-slate-300 italic">لا توجد اختبارات مربوطة بالفصل</span>}
+                                                    </div>
+                                                 </td>
+                                              </tr>
+                                           );
+                                        })}
+                                     </tbody>
+                                  </table>
+                               </div>
+                               )}
+                            </div>
                         </div>
                      </div>
                    )}
@@ -1465,27 +1478,29 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                       {/* Right Sidebar: Weakest, Strongest, Needs Support */}
                       <div className="space-y-8">
                          {/* Weakest Skills */}
-                         <div className="bg-white p-8 rounded-3xl border border-rose-100 shadow-minimal space-y-6">
-                            <div className="flex items-center gap-3">
-                               <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center">
-                                  <AlertCircle size={20} />
-                               </div>
-                               <h4 className="font-black text-lg text-slate-800">تحتاج لتدخل علاجي</h4>
-                            </div>
-                            <div className="space-y-4">
-                               {skillAnalytics.weakestSkills.length > 0 ? skillAnalytics.weakestSkills.map(skill => (
-                                  <div key={skill.id} className="p-4 bg-rose-50/50 rounded-2xl border border-rose-100/50">
-                                     <p className="font-black text-slate-800 text-xs leading-relaxed mb-2">{skill.name}</p>
-                                     <div className="flex justify-between items-center text-[10px] font-bold">
-                                        <span className="text-slate-500">{skill.subjectName}</span>
-                                        <span className="text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md">نسبة الضعف: {skill.weakRate}%</span>
-                                     </div>
-                                  </div>
-                               )) : (
-                                  <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 rounded-2xl"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><AlertCircle size={24} className="text-slate-300" /></div><p className="text-xs font-bold text-slate-500">المهارات مقيمة بمستويات جيدة</p></div>
-                               )}
-                            </div>
-                         </div>
+                         {!hideStudentDetails && (
+                           <div className="bg-white p-8 rounded-3xl border border-rose-100 shadow-minimal space-y-6">
+                              <div className="flex items-center gap-3">
+                                 <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center">
+                                    <AlertCircle size={20} />
+                                 </div>
+                                 <h4 className="font-black text-lg text-slate-800">تحتاج لتدخل علاجي</h4>
+                              </div>
+                              <div className="space-y-4">
+                                 {skillAnalytics.weakestSkills.length > 0 ? skillAnalytics.weakestSkills.map(skill => (
+                                    <div key={skill.id} className="p-4 bg-rose-50/50 rounded-2xl border border-rose-100/50">
+                                       <p className="font-black text-slate-800 text-xs leading-relaxed mb-2">{skill.name}</p>
+                                       <div className="flex justify-between items-center text-[10px] font-bold">
+                                          <span className="text-slate-500">{skill.subjectName}</span>
+                                          <span className="text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md">نسبة الضعف: {skill.weakRate}%</span>
+                                       </div>
+                                    </div>
+                                 )) : (
+                                    <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 rounded-2xl"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><AlertCircle size={24} className="text-slate-300" /></div><p className="text-xs font-bold text-slate-500">المهارات مقيمة بمستويات جيدة</p></div>
+                                 )}
+                              </div>
+                           </div>
+                         )}
 
                          {/* Top Skills */}
                          <div className="bg-white p-8 rounded-3xl border border-emerald-100 shadow-minimal space-y-6">
@@ -1511,26 +1526,28 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                          </div>
 
                          {/* Non Achievers */}
-                         <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-minimal space-y-6">
-                            <div className="flex items-center gap-3">
-                               <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
-                                  <Users size={20} />
-                               </div>
-                               <h4 className="font-black text-lg text-slate-800">طلاب بحاجة لدعم</h4>
-                            </div>
-                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                               {skillAnalytics.masteryDistribution.nonAchievers.length > 0 ? skillAnalytics.masteryDistribution.nonAchievers.map(student => (
-                                  <div key={student.id} className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100 rounded-xl">
-                                     <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">
-                                        {student.name.charAt(0)}
-                                     </div>
-                                     <span className="font-black text-slate-700 text-xs">{student.name}</span>
-                                  </div>
-                               )) : (
-                                  <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 rounded-2xl"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><Users size={24} className="text-slate-300" /></div><p className="text-xs font-bold text-slate-500">لا يوجد طلاب بحاجة لمتابعة</p></div>
-                               )}
-                            </div>
-                         </div>
+                         {!hideStudentDetails && (
+                           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-minimal space-y-6">
+                              <div className="flex items-center gap-3">
+                                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
+                                    <Users size={20} />
+                                 </div>
+                                 <h4 className="font-black text-lg text-slate-800">طلاب بحاجة لدعم</h4>
+                              </div>
+                              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                 {skillAnalytics.masteryDistribution.nonAchievers.length > 0 ? skillAnalytics.masteryDistribution.nonAchievers.map(student => (
+                                    <div key={student.id} className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100 rounded-xl">
+                                       <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">
+                                          {student.name.charAt(0)}
+                                       </div>
+                                       <span className="font-black text-slate-700 text-xs">{student.name}</span>
+                                    </div>
+                                 )) : (
+                                    <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 rounded-2xl"><div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center mb-3"><Users size={24} className="text-slate-300" /></div><p className="text-xs font-bold text-slate-500">لا يوجد طلاب بحاجة لمتابعة</p></div>
+                                 )}
+                              </div>
+                           </div>
+                         )}
                       </div>
                    </div>
                 </motion.div>

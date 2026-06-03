@@ -82,6 +82,7 @@ import { Visits } from './components/Visits';
 import { QuizLogin } from './components/QuizLogin';
 import { TeacherProfile } from './components/TeacherProfile';
 import { TeacherDashboard } from './components/TeacherDashboard';
+import { SupervisorDashboard } from './components/SupervisorDashboard';
 import { normalizeNumerals } from './lib/stringUtils';
 
 import { ProfessionalReports } from './components/ProfessionalReports';
@@ -221,6 +222,11 @@ export default function App() {
   const [activeTerm, setActiveTerm] = useState<'term1' | 'term2'>('term1');
   const academicYear = `${baseAcademicYear}-${activeTerm}`;
   const displayYear = baseAcademicYear;
+
+  const toggleTerm = () => {
+    setActiveTerm(prev => prev === 'term1' ? 'term2' : 'term1');
+  };
+
   const [showStudentQuizPortal, setShowStudentQuizPortal] = useState(false);
   const [globalFilterTeacherId, setGlobalFilterTeacherId] = useState('');
   const [isTeacherReportMode, setIsTeacherReportMode] = useState(false);
@@ -1017,19 +1023,37 @@ export default function App() {
 
           {view === 'external-portal' && externalProfile && (
             <div className="w-full h-full flex flex-col flex-1 select-none">
-              <TeacherDashboard 
-                 data={appData}
-                 evaluations={evaluations}
-                 academicYear={academicYear}
-                 displayYear={baseAcademicYear}
-                 activeTerm={activeTerm}
-                 externalProfile={externalProfile}
-                 onLogout={() => {
-                   setExternalProfileState(null);
-                   setView('login');
-                 }}
-                 calculatePerformance={calculatePerformance}
-              />
+              {externalProfile.role === 'supervisor' ? (
+                <SupervisorDashboard 
+                   data={appData}
+                   evaluations={evaluations}
+                   academicYear={academicYear}
+                   displayYear={baseAcademicYear}
+                   activeTerm={activeTerm}
+                   externalProfile={externalProfile}
+                   onLogout={() => {
+                     setExternalProfileState(null);
+                     setView('login');
+                   }}
+                   onToggleTerm={toggleTerm}
+                   calculatePerformance={calculatePerformance}
+                />
+              ) : (
+                <TeacherDashboard 
+                   data={appData}
+                   evaluations={evaluations}
+                   academicYear={academicYear}
+                   displayYear={baseAcademicYear}
+                   activeTerm={activeTerm}
+                   externalProfile={externalProfile}
+                   onLogout={() => {
+                     setExternalProfileState(null);
+                     setView('login');
+                   }}
+                   onToggleTerm={toggleTerm}
+                   calculatePerformance={calculatePerformance}
+                />
+              )}
             </div>
           )}
 
