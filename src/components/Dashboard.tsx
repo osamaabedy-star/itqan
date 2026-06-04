@@ -593,29 +593,41 @@ export function Dashboard({
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-12 pb-12">
-                  {stats.map((stat, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="bg-white p-4 rounded-3xl border border-slate-100 flex items-center gap-4 shadow-sm"
-                    >
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center text-white ${stat.color} shadow-lg shrink-0`}
+                  {stats.map((stat, i) => {
+                    let bgGradient = 'from-indigo-50/70 to-white hover:border-indigo-200 text-indigo-950 shadow-indigo-100/30';
+                    if (stat.color.includes('blue')) {
+                      bgGradient = 'from-sky-50/70 to-white hover:border-sky-200 text-sky-950 shadow-sky-100/30';
+                    } else if (stat.color.includes('emerald') || stat.color.includes('green') || stat.color.includes('success')) {
+                      bgGradient = 'from-emerald-50/70 to-white hover:border-emerald-200 text-emerald-950 shadow-emerald-100/30';
+                    } else if (stat.color.includes('amber') || stat.color.includes('yellow') || stat.color.includes('warning')) {
+                      bgGradient = 'from-amber-50/70 to-white hover:border-amber-200 text-amber-950 shadow-amber-100/30';
+                    } else if (stat.color.includes('violet') || stat.color.includes('purple')) {
+                      bgGradient = 'from-purple-50/70 to-white hover:border-purple-200 text-purple-950 shadow-purple-100/30';
+                    }
+
+                    return (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        className={`p-5 rounded-3xl border border-slate-100 shadow-md bg-gradient-to-br ${bgGradient} flex items-center justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-xl relative overflow-hidden group`}
                       >
-                        {stat.icon}
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5 tracking-widest">
-                          {stat.label}
-                        </p>
-                        <p className="text-lg font-black text-slate-800 tracking-tight">
-                          {stat.value}
-                        </p>
-                      </div>
-                    </motion.div>
-                  ))}
+                        <div className="space-y-1.5 z-10 text-right">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
+                            {stat.label}
+                          </p>
+                          <span className="text-2xl font-black tracking-tight leading-none block text-slate-800">
+                            {stat.value}
+                          </span>
+                        </div>
+                        <div className={`w-12 h-12 rounded-2xl bg-white border border-slate-50 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300 z-10 text-indigo-600`}>
+                          {React.cloneElement(stat.icon as any, { size: 24, className: stat.color.includes('blue') ? 'text-sky-600' : stat.color.includes('green') ? 'text-emerald-600' : stat.color.includes('amber') ? 'text-amber-500' : stat.color.includes('violet') ? 'text-violet-600' : 'text-indigo-600' })}
+                        </div>
+                        <div className="absolute -right-2 -bottom-2 w-16 h-16 bg-slate-50/40 rounded-full group-hover:scale-150 transition-all duration-700 pointer-events-none" />
+                      </motion.div>
+                    );
+                  })}
                 </div>
 
                 {false && (

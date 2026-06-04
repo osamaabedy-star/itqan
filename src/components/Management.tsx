@@ -2273,33 +2273,33 @@ export function Management({
                 description="احصائيات شاملة للنظام التعليمي وإدارة البيانات"
               />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-indigo-200 transition-all">
-                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-2">
-                    <Building size={24} />
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-1 hover:border-indigo-200 transition-all">
+                  <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-1">
+                    <Building size={16} />
                   </div>
-                  <span className="text-3xl font-black text-slate-800">{data.classes?.length || 0}</span>
-                  <span className="text-xs font-bold text-slate-500 text-center">فصل دراسي</span>
+                  <span className="text-xl font-black text-slate-800">{data.classes?.length || 0}</span>
+                  <span className="text-[10px] font-bold text-slate-500 text-center">فصل دراسي</span>
                 </div>
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-blue-200 transition-all">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-2">
-                    <UserPlus size={24} />
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-1 hover:border-blue-200 transition-all">
+                  <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-1">
+                    <UserPlus size={16} />
                   </div>
-                  <span className="text-3xl font-black text-slate-800">{data.students?.length || 0}</span>
-                  <span className="text-xs font-bold text-slate-500 text-center">طالب مسجل</span>
+                  <span className="text-xl font-black text-slate-800">{data.students?.length || 0}</span>
+                  <span className="text-[10px] font-bold text-slate-500 text-center">طالب مسجل</span>
                 </div>
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-purple-200 transition-all">
-                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-2">
-                    <Users size={24} />
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-1 hover:border-purple-200 transition-all">
+                  <div className="w-9 h-9 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-1">
+                    <Users size={16} />
                   </div>
-                  <span className="text-3xl font-black text-slate-800">{data.teachers?.length || 0}</span>
-                  <span className="text-xs font-bold text-slate-500 text-center">معلم</span>
+                  <span className="text-xl font-black text-slate-800">{data.teachers?.length || 0}</span>
+                  <span className="text-[10px] font-bold text-slate-500 text-center">معلم</span>
                 </div>
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-amber-200 transition-all">
-                  <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-2">
-                    <BrainCircuit size={24} />
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-1 hover:border-amber-200 transition-all">
+                  <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-1">
+                    <BrainCircuit size={16} />
                   </div>
-                  <span className="text-3xl font-black text-slate-800">{data.quizzes?.length || 0}</span>
-                  <span className="text-xs font-bold text-slate-500 text-center">اختبار إلكتروني</span>
+                  <span className="text-xl font-black text-slate-800">{data.quizzes?.length || 0}</span>
+                  <span className="text-[10px] font-bold text-slate-500 text-center">اختبار إلكتروني</span>
                 </div>
               </div>
               

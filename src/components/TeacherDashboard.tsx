@@ -491,22 +491,25 @@ interface StatCardProps {
 
 const StatCard: React.FC<StatCardProps> = ({ icon, label, value, subValue, color }) => {
   const colorMap = {
-    indigo: 'bg-indigo-50 border-indigo-100 text-indigo-900',
-    emerald: 'bg-emerald-50 border-emerald-100 text-emerald-900',
-    amber: 'bg-amber-50 border-amber-100 text-amber-900',
-    sky: 'bg-sky-50 border-sky-100 text-sky-900',
+    indigo: 'from-indigo-50/70 to-white hover:border-indigo-200 text-indigo-950 shadow-indigo-100/30',
+    emerald: 'from-emerald-50/70 to-white hover:border-emerald-200 text-emerald-950 shadow-emerald-100/30',
+    amber: 'from-amber-50/70 to-white hover:border-amber-200 text-amber-950 shadow-amber-100/30',
+    sky: 'from-sky-50/70 to-white hover:border-sky-200 text-sky-950 shadow-sky-100/30',
   };
 
   return (
-    <div className={`p-4 rounded-3xl border shadow-sm ${colorMap[color]} flex flex-col gap-1 transition-transform hover:-translate-y-1`}>
-      <div className="w-8 h-8 rounded-xl bg-white/80 border border-white flex items-center justify-center shadow-inner mb-1">
-        {icon}
+    <div className={`p-5 rounded-3xl border border-slate-100 shadow-md bg-gradient-to-br ${colorMap[color]} flex items-center justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-xl relative overflow-hidden group`}>
+      <div className="space-y-1.5 z-10 text-right">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{label}</p>
+        <div className="flex items-baseline gap-1.5">
+           <span className="text-2xl font-black tracking-tight leading-none">{value}</span>
+           <span className="text-[10px] font-bold text-slate-500">{subValue}</span>
+        </div>
       </div>
-      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
-      <div className="flex items-baseline gap-1">
-         <h4 className="text-xl font-black">{value}</h4>
-         <span className="text-[9px] font-bold opacity-60">{subValue}</span>
+      <div className="w-12 h-12 rounded-2xl bg-white border border-slate-50 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300 z-10">
+        {React.cloneElement(icon as any, { size: 24 })}
       </div>
+      <div className="absolute -right-2 -bottom-2 w-16 h-16 bg-slate-50/40 rounded-full group-hover:scale-150 transition-all duration-700 pointer-events-none" />
     </div>
   );
 };

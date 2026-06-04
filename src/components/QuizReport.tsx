@@ -171,44 +171,44 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
         </div>
 
         {/* Overview Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 print:grid-cols-4 print:gap-4">
-           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between print:rounded-2xl print:p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-4 print:gap-3">
+           <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between print:rounded-xl print:p-3">
               <div>
-                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">المتوسط العام</p>
-                 <p className="text-3xl font-black text-slate-800">{overallAverage}%</p>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">المتوسط العام</p>
+                 <p className="text-xl font-black text-slate-800">{overallAverage}%</p>
               </div>
-              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
-                 <LayoutGrid size={24} />
+              <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                 <LayoutGrid size={16} />
               </div>
            </div>
            
-           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between print:rounded-2xl print:p-4">
+           <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between print:rounded-xl print:p-3">
               <div>
-                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">المستهدفون</p>
-                 <p className="text-3xl font-black text-slate-800">{targetStudents.length}</p>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">المستهدفون</p>
+                 <p className="text-xl font-black text-slate-800">{targetStudents.length}</p>
               </div>
-              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
-                 <Users size={24} />
+              <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+                 <Users size={16} />
               </div>
            </div>
 
-           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between print:rounded-2xl print:p-4">
+           <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between print:rounded-xl print:p-3">
               <div>
-                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">المختبرون</p>
-                 <p className="text-3xl font-black text-emerald-600">{testedStudents.length}</p>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">المختبرون</p>
+                 <p className="text-xl font-black text-emerald-600">{testedStudents.length}</p>
               </div>
-              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
-                 <CheckCircle2 size={24} />
+              <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                 <CheckCircle2 size={16} />
               </div>
            </div>
 
-           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between print:rounded-2xl print:p-4">
+           <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between print:rounded-xl print:p-3">
               <div>
-                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">الغياب</p>
-                 <p className="text-3xl font-black text-rose-600">{untestedStudents.length}</p>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">الغياب</p>
+                 <p className="text-xl font-black text-rose-600">{untestedStudents.length}</p>
               </div>
-              <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center">
-                 <XCircle size={24} />
+              <div className="w-9 h-9 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center">
+                 <XCircle size={16} />
               </div>
            </div>
         </div>
