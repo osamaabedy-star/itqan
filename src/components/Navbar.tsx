@@ -8,8 +8,8 @@ interface NavbarProps {
   activeView: string;
   academicYear: string;
   onYearChange: (year: string) => void;
-  activeTerm: 'term1' | 'term2';
-  onTermChange: (term: 'term1' | 'term2') => void;
+  activeTerm: 'term1' | 'term2' | 'full';
+  onTermChange: (term: 'term1' | 'term2' | 'full') => void;
   teachers: any[];
   selectedTeacherId: string;
   onTeacherChange: (id: string) => void;
@@ -37,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   schoolLogoUrl
 }) => {
   const user = auth.currentUser;
+  const isAdmin = user?.email === 'osamaabedy@gmail.com';
 
   const cycleTheme = () => {
     if (theme === 'light') onThemeChange('dark');
@@ -93,25 +94,12 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="hidden md:flex items-center gap-1.5 bg-amber-50/50 px-2.5 py-1 rounded-lg border border-amber-100/50">
            <select 
              value={activeTerm} 
-             onChange={(e) => onTermChange(e.target.value as 'term1' | 'term2')}
+             onChange={(e) => onTermChange(e.target.value as 'term1' | 'term2' | 'full')}
              className="bg-transparent border-none outline-none font-bold text-[10px] text-amber-700 cursor-pointer"
            >
+              <option value="full">العام الدراسي كامل</option>
               <option value="term1">الفصل الأول</option>
               <option value="term2">الفصل الثاني</option>
-           </select>
-        </div>
-
-        <div className="hidden lg:flex items-center gap-1.5 bg-indigo-50/50 px-2.5 py-1 rounded-lg border border-indigo-100/50 mr-2">
-           <Users size={12} className="text-indigo-500" />
-           <select 
-             value={selectedTeacherId} 
-             onChange={(e) => onTeacherChange(e.target.value)}
-             className="bg-transparent border-none outline-none font-bold text-[10px] text-indigo-700 cursor-pointer max-w-[120px]"
-           >
-              <option value="">جميع المعلمين</option>
-              {teachers.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
            </select>
         </div>
       </div>
@@ -149,12 +137,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             label="التقارير"
           />
           <div className="w-px h-4 bg-slate-200 self-center mx-0.5" />
-          <NavButton 
-            active={activeView === 'management'} 
-            onClick={() => onNavigate('management')}
-            icon={<Settings size={14} className="sm:w-4 sm:h-4" />}
-            label="الإدارة"
-          />
+          {isAdmin && (
+            <NavButton 
+              active={activeView === 'management'} 
+              onClick={() => onNavigate('management')}
+              icon={<Settings size={14} className="sm:w-4 sm:h-4" />}
+              label="الإدارة"
+            />
+          )}
         </nav>
 
         {/* Dynamic Theme Toggler */}

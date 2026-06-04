@@ -48,7 +48,7 @@ interface FirestoreErrorInfo {
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, shouldThrow: boolean = true) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -66,7 +66,9 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  if (shouldThrow) {
+    throw new Error(JSON.stringify(errInfo));
+  }
 }
 
 export const firestoreService = {
@@ -112,7 +114,7 @@ export const firestoreService = {
       });
       callback(evals);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
+      handleFirestoreError(error, OperationType.LIST, path, false);
     });
   },
 
@@ -197,7 +199,7 @@ export const firestoreService = {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       callback(items);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, collectionName);
+      handleFirestoreError(error, OperationType.LIST, collectionName, false);
     });
   },
 

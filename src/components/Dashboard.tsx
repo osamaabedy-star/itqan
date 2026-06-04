@@ -48,7 +48,7 @@ interface DashboardProps {
   data: AppData;
   evaluations: Evaluations;
   academicYear: string;
-  activeTerm: 'term1' | 'term2';
+  activeTerm: 'term1' | 'term2' | 'full';
   onNavigate: (view: string) => void;
   onSelectClass: (cls: Class) => void;
   onSelectStudent: (st: Student) => void;
@@ -57,6 +57,7 @@ interface DashboardProps {
   calculatePerformance: (classId: string, subjectId?: string) => number;
   filterTeacherId?: string;
   onFilterTeacherChange?: (id: string) => void;
+  isAdmin?: boolean;
 }
 
 import { APP_STAGES } from "../constants";
@@ -74,6 +75,7 @@ export function Dashboard({
   calculatePerformance,
   filterTeacherId,
   onFilterTeacherChange,
+  isAdmin,
 }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
@@ -124,7 +126,7 @@ export function Dashboard({
     .filter(
       (q) =>
         !q.isArchived &&
-        (q.term || 'term1') === activeTerm &&
+        (activeTerm === 'full' || (q.term || 'term1') === activeTerm) &&
         currentGradesToList.map((g) => g.id).includes(q.gradeId || ""),
     )
     .filter((q) => {
@@ -235,12 +237,7 @@ export function Dashboard({
                 اختر المرحلة التعليمية
               </h2>
               <div className="h-[2px] flex-1 mx-6 bg-slate-100 rounded-full" />
-              <button
-                onClick={() => onNavigate("management")}
-                className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1"
-              >
-                <ShieldCheck size={14} /> تهيئة النظام
-              </button>
+              {/* Removed تهيئة النظام button per user request */}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -350,12 +347,7 @@ export function Dashboard({
                 الصفوف الدراسية
               </h2>
               <div className="h-[2px] flex-1 mx-6 bg-slate-100 rounded-full" />
-              <button
-                onClick={() => onNavigate("management")}
-                className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1"
-              >
-                <ShieldCheck size={14} /> تهيئة النظام
-              </button>
+              {/* Removed تهيئة النظام button per user request */}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

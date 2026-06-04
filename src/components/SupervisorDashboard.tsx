@@ -23,7 +23,7 @@ interface SupervisorDashboardProps {
   evaluations: Evaluations;
   academicYear: string;
   displayYear: string;
-  activeTerm: "term1" | "term2";
+  activeTerm: "term1" | "term2" | "full";
   externalProfile: ExternalProfile;
   onLogout: () => void;
   onToggleTerm: () => void;
@@ -38,8 +38,8 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
 
   const totalStudents = data.students.filter(s => !s.isArchived).length;
   const totalTeachers = data.teachers.filter(s => !s.isArchived).length;
-  const totalVisits = data.visits.filter(s => !s.isArchived).length;
-  const totalQuizzes = data.quizzes.filter(s => !s.isArchived).length;
+  const totalVisits = data.visits.filter(s => !s.isArchived && (filterTeacherId ? s.teacherId === filterTeacherId : true)).length;
+  const totalQuizzes = data.quizzes.filter(s => !s.isArchived && (filterTeacherId ? s.teacherId === filterTeacherId : true)).length;
 
   return (
     <div className="h-full flex flex-col bg-[#FDFCF9] font-sans" dir="rtl">
@@ -76,7 +76,7 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
             className="hidden md:flex items-center gap-2 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
             <Calendar size={14} />
-            <span className="text-xs font-black">{activeTerm === 'term1' ? 'الفصل الدراسي الأول' : 'الفصل الدراسي الثاني'}</span>
+            <span className="text-xs font-black">{activeTerm === 'term1' ? 'الفصل الدراسي الأول' : activeTerm === 'term2' ? 'الفصل الدراسي الثاني' : 'العام الدراسي كامل'}</span>
           </button>
           <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-100 px-4 py-2 rounded-xl">
              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

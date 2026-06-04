@@ -61,7 +61,7 @@ interface ProfessionalReportsProps {
   evaluations: Evaluations;
   academicYear: string;
   displayYear: string;
-  activeTerm: 'term1' | 'term2';
+  activeTerm: 'term1' | 'term2' | 'full';
   onSelectStudent?: (student: Student) => void;
   onClose?: () => void;
   filterTeacherId?: string;
@@ -225,7 +225,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
     }
     // Only show quizzes that have been tested/evaluated by students or belong to the active term
     const hasResults = data.quizResults?.some(r => !r.isArchived && r.quizId === q.id);
-    const isTermMatch = (q.term || 'term1') === activeTerm;
+    const isTermMatch = activeTerm === 'full' || (q.term || 'term1') === activeTerm;
     return hasResults || isTermMatch;
   });
 

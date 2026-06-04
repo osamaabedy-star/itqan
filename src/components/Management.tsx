@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   PlusCircle,
   LayoutGrid,
+  LayoutDashboard,
   Check,
   Zap,
   Calendar,
@@ -50,6 +51,7 @@ import { firestoreService } from "../services/firestoreService";
 import { APP_STAGES } from "../constants";
 import { normalizeNumerals } from "../lib/stringUtils";
 import { ImageUploader } from "./ui/ImageUploader";
+import { PdfUploader } from "./ui/PdfUploader";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
 
 function parseBulkLine(line: string, type: "teachers" | "students" = "students") {
@@ -179,6 +181,7 @@ export function Management({
   academicYear,
 }: ManagementProps) {
   const [activeTab, setActiveTab] = useState<
+    | "overview"
     | "grades"
     | "teachers"
     | "classes"
@@ -191,7 +194,8 @@ export function Management({
     | "rubrics"
     | "external_profiles"
     | "system_settings"
-  >("grades");
+    | "books"
+  >("overview");
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -532,6 +536,7 @@ export function Management({
   const [skillName, setSkillName] = useState("");
   const [targetSubjectName, setTargetSubjectName] = useState("");
   const [skillQuestions, setSkillQuestions] = useState("");
+  const [skillTerm, setSkillTerm] = useState<"term1" | "term2" | "full">("term1");
   const [searchQuery, setSearchQuery] = useState("");
   const [parsedTeachers, setParsedTeachers] = useState<{ name: string; nationalId: string }[]>([]);
   const [parsedStudents, setParsedStudents] = useState<{ name: string; nationalId: string; className?: string; gradeName?: string }[]>([]);
@@ -560,6 +565,7 @@ export function Management({
   const [filterQuizSubjectId, setFilterQuizSubjectId] = useState("");
   const [filterQuizGradeId, setFilterQuizGradeId] = useState("");
   const [filterQuizTerm, setFilterQuizTerm] = useState<string>("");
+  const [filterQuizStage, setFilterQuizStage] = useState<string>("");
 
   const filterTeacherId = onFilterTeacherChange
     ? propFilterTeacherId || ""
@@ -572,12 +578,14 @@ export function Management({
   // Quiz Form State
   const [quizTitle, setQuizTitle] = useState("");
   const [quizStatus, setQuizStatus] = useState<"draft" | "published">("draft");
-  const [quizTerm, setQuizTerm] = useState<"term1" | "term2">("term1");
+  const [quizTerm, setQuizTerm] = useState<"term1" | "term2" | "all">("term1");
   const [quizSubjectIds, setQuizSubjectIds] = useState<string[]>([]);
   const [quizSubjectName, setQuizSubjectName] = useState("");
   const [quizSelectedGradeId, setQuizSelectedGradeId] = useState("");
   const [quizQuestions, setQuizQuestions] = useState<MCQQuestion[]>([]);
   const [quizImageUrl, setQuizImageUrl] = useState("");
+  const [quizBookId, setQuizBookId] = useState("");
+  const [quizBookPageReference, setQuizBookPageReference] = useState("");
   const [currentQText, setCurrentQText] = useState("");
   const [currentQImageUrl, setCurrentQImageUrl] = useState("");
   const [currentQOptions, setCurrentQOptions] = useState(["", "", "", ""]);
@@ -592,7 +600,7 @@ export function Management({
   const [bulkQuizText, setBulkQuizText] = useState("");
 
   // AI Question Generator States
-  const [aiMode, setAiMode] = useState<"lesson" | "custom">("lesson");
+  const [aiMode, setAiMode] = useState<"lesson" | "custom" | "book">("lesson");
   const [aiSelectedGradeId, setAiSelectedGradeId] = useState("");
   const [aiSelectedSubject, setAiSelectedSubject] = useState("");
   const [aiLessonName, setAiLessonName] = useState("");
@@ -601,6 +609,23 @@ export function Management({
   const [aiIsGenerating, setAiIsGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiSuccess, setAiSuccess] = useState("");
+  const [aiSelectedBookId, setAiSelectedBookId] = useState("");
+  const [aiSelectedChapterIds, setAiSelectedChapterIds] = useState<string[]>([]);
+
+  // Student Book States
+  const [bookTitle, setBookTitle] = useState("");
+  const [bookSelectedGradeId, setBookSelectedGradeId] = useState("");
+  const [bookSubjectName, setBookSubjectName] = useState("");
+  const [bookTerm, setBookTerm] = useState<'term1' | 'term2' | 'full'>("term1");
+  const [bookChapters, setBookChapters] = useState<{ id: string; title: string; content: string; pages?: string; }[]>([]);
+  const [editingBookId, setEditingBookId] = useState<string | null>(null);
+
+  // Chapters builder inside book creation
+  const [newChapterTitle, setNewChapterTitle] = useState("");
+  const [newChapterContent, setNewChapterContent] = useState("");
+  const [newChapterPages, setNewChapterPages] = useState("");
+  const [editingChapterIndex, setEditingChapterIndex] = useState<number | null>(null);
+  const [aiChapterGenerating, setAiChapterGenerating] = useState(false);
 
   // Sync AI choices with main quiz choices
   useEffect(() => {
@@ -622,6 +647,7 @@ export function Management({
     let finalPrompt = "";
     let finalSubject = "";
     let finalGrade = "";
+    let bookChaptersPayload: any[] | undefined = undefined;
 
     if (aiMode === "lesson") {
       if (!aiLessonName.trim()) {
@@ -634,6 +660,31 @@ export function Management({
       finalGrade = targetGrade ? targetGrade.name : "";
 
       finalPrompt = `تمارين وأسئلة متميزة في مادة ${finalSubject || "المادة"} لدرس: "${aiLessonName.trim()}" ${finalGrade ? `للصف ${finalGrade}` : ""}`;
+    } else if (aiMode === "book") {
+      if (!aiSelectedBookId) {
+        setAiError("يرجى تحديد الكتاب أو المنهج المرجعي أولاً");
+        return;
+      }
+      if (aiSelectedChapterIds.length === 0) {
+        setAiError("يرجى تحديد درس أو فصل مادي واحد على الأقل للتوليد منه");
+        return;
+      }
+
+      const selectedBook = data.studentBooks?.find((b) => b.id === aiSelectedBookId);
+      if (!selectedBook) {
+        setAiError("الملف المرجعي لهذا المنهج غير موجود");
+        return;
+      }
+
+      const selectedChapters = selectedBook.chapters?.filter((ch) => aiSelectedChapterIds.includes(ch.id)) || [];
+      bookChaptersPayload = selectedChapters.map(ch => ({ title: ch.title, content: ch.content, pages: ch.pages }));
+      const chaptersTextAndNotes = selectedChapters.map((ch) => `الدرس: ${ch.title}${ch.pages ? ` (المأخوذ من الصفحات: ${ch.pages})` : ""}\nالمحتوى المرجعي:\n${ch.content}`).join("\n\n");
+
+      finalSubject = selectedBook.subjectName;
+      const targetGrade = data.grades.find((g) => g.id === selectedBook.gradeId);
+      finalGrade = targetGrade ? targetGrade.name : "";
+
+      finalPrompt = `أنت بصدد توليد أسئلة اختبار دقيقة ومطابقة بنسبة 100% للنصوص المرجعية التالية المأخوذة من كتاب الطالب لمادة: {${selectedBook.subjectName}}:\n\n${chaptersTextAndNotes}\n\nصغ أسئلة اختبار ذكية وبنفس مفردات ومصطلحات هذا المرجع التعليمي الشامل تقيس فهم وتحصيل الطلاب.`;
     } else {
       if (!aiPrompt.trim()) {
         setAiError(
@@ -660,6 +711,7 @@ export function Management({
           count: aiQuestionCount,
           subject: finalSubject || undefined,
           grade: finalGrade || undefined,
+          chapters: bookChaptersPayload
         }),
       });
 
@@ -1109,6 +1161,7 @@ export function Management({
     setSkillName("");
     setTargetSubjectName("");
     setSkillQuestions("");
+    setSkillTerm("term1");
     setQuizTitle("");
     setQuizStatus("draft");
     setQuizTerm("term1");
@@ -1116,6 +1169,9 @@ export function Management({
     setQuizSubjectName("");
     setQuizSelectedGradeId("");
     setQuizQuestions([]);
+    setQuizImageUrl("");
+    setQuizBookId("");
+    setQuizBookPageReference("");
     setCurrentQText("");
     setCurrentQImageUrl("");
     setCurrentQOptions(["", "", "", ""]);
@@ -1136,6 +1192,86 @@ export function Management({
     setEditingId(null);
     setParsedTeachers([]);
     setParsedStudents([]);
+    // Student Book Forms Reset
+    setBookTitle("");
+    setBookSelectedGradeId("");
+    setBookSubjectName("");
+    setBookTerm("term1");
+    setBookChapters([]);
+    setEditingBookId(null);
+    setNewChapterTitle("");
+    setNewChapterContent("");
+    setNewChapterPages("");
+    setEditingChapterIndex(null);
+    setAiChapterGenerating(false);
+  };
+
+  const handleSaveBook = async () => {
+    if (!bookTitle.trim()) {
+      alert("يرجى كتابة عنوان للتسمية");
+      return;
+    }
+    if (!bookSelectedGradeId) {
+      alert("يرجى تحديد الصف الدراسي");
+      return;
+    }
+    if (!bookSubjectName || !bookSubjectName.trim()) {
+      alert("يرجى تحديد المادة الدراسية");
+      return;
+    }
+
+    let finalChapters = [...bookChapters];
+    if (newChapterTitle.trim()) {
+      const alreadyExists = finalChapters.some(ch => ch.title.trim() === newChapterTitle.trim());
+      if (!alreadyExists) {
+        finalChapters.push({
+          id: "chap_" + Date.now() + Math.random().toString(36).substr(2, 4),
+          title: newChapterTitle.trim(),
+          content: newChapterContent.trim() || "محتوى وشرح مرجعي للدرس",
+          pages: newChapterPages.trim() || undefined
+        });
+      }
+    }
+
+    if (finalChapters.length === 0) {
+      alert("يرجى إضافة درس أو باب واحد على الأقل للمنهج الدراسي قبل الحفظ");
+      return;
+    }
+
+    const bId = editingBookId || "book_" + Date.now();
+    const bookDataToSave = {
+      id: bId,
+      title: bookTitle.trim(),
+      gradeId: bookSelectedGradeId,
+      subjectName: bookSubjectName.trim(),
+      term: bookTerm,
+      chapters: finalChapters,
+      isArchived: false,
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      await firestoreService.saveItem("studentBooks", bId, bookDataToSave);
+      alert(editingBookId ? "تم تعديل المنهج بنجاح!" : "تم إضافة المنهج بنجاح!");
+      resetForms();
+    } catch (e) {
+      console.error(e);
+      alert("حدث خطأ أثناء الحفظ");
+    }
+  };
+
+  const handleEditBook = (book: any) => {
+    setEditingBookId(book.id);
+    setBookTitle(book.title);
+    setBookSelectedGradeId(book.gradeId);
+    setBookSubjectName(book.subjectName);
+    setBookTerm(book.term || "term1");
+    setBookChapters(book.chapters || []);
+    setNewChapterTitle("");
+    setNewChapterContent("");
+    setNewChapterPages("");
+    setEditingChapterIndex(null);
+    setActiveTab("books");
   };
 
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>, type: "teachers" | "students") => {
@@ -1265,7 +1401,10 @@ export function Management({
         gradeId: gradeIds[0] || "", // Keep for backward compatibility
         classIds: classIds,
         subjectIds: quizSubjectIds,
+        teacherId: filterTeacherId,
         imageUrl: (quizImageUrl || "").trim(),
+        bookId: quizBookId || undefined,
+        bookPageReference: (quizBookPageReference || "").trim() || undefined,
         questions: quizQuestions
           .map((q) => ({
             ...q,
@@ -1593,6 +1732,7 @@ export function Management({
         gradeId: targetGradeId,
         subjectName: targetSubjectName,
         questions,
+        term: skillTerm || "term1",
         createdAt: new Date().toISOString(),
       });
       alert("تم حفظ المهارة بنجاح");
@@ -1661,6 +1801,7 @@ export function Management({
       setTargetGradeId(item.gradeId || "");
       setTargetSubjectName(item.subjectName || "");
       setSkillQuestions(item.questions.join("\n"));
+      setSkillTerm(item.term || "term1");
     } else if (type === "quizzes") {
       setQuizTitle(item.title);
       setQuizStatus(item.status || "draft");
@@ -1685,7 +1826,13 @@ export function Management({
         setQuizSelectedGradeId("");
       }
       setQuizImageUrl(item.imageUrl || "");
+      setQuizBookId(item.bookId || "");
+      setQuizBookPageReference(item.bookPageReference || "");
       setQuizQuestions(item.questions);
+      if (item.bookId) {
+        setAiSelectedBookId(item.bookId);
+        setAiMode("book");
+      }
     } else if (type === "rubrics") {
       setRubricName(item.name);
       setRubricCategories(item.categories || []);
@@ -1835,7 +1982,7 @@ export function Management({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+    <div className="flex-1 flex w-full h-full bg-slate-50/50 relative overflow-hidden font-sans" dir="rtl">
       {isProcessing && (
         <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-[100] flex flex-col items-center justify-center">
           <motion.div
@@ -1846,93 +1993,89 @@ export function Management({
           <p className="font-black text-indigo-900">جاري معالجة البيانات...</p>
         </div>
       )}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white w-full max-w-6xl h-[94vh] md:h-[85vh] rounded-3xl md:rounded-[48px] shadow-2xl flex overflow-hidden border-4 md:border-8 border-white/20 font-sans relative"
-        dir="rtl"
-      >
-        {/* Close Button overlay */}
-        <button
-          onClick={onClose}
-          className="hidden md:flex absolute top-8 left-8 w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all z-20 group"
-        >
-          <X size={24} className="group-hover:rotate-90 transition-transform" />
-        </button>
+      
+      {/* Mobile Sidebar Overlay Backdrop */}
+      {isMobileSidebarOpen && (
+        <div 
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-[2px] z-40 lg:hidden"
+        />
+      )}
 
-        {/* Mobile Sidebar Overlay Backdrop */}
-        {isMobileSidebarOpen && (
-          <div 
-            onClick={() => setIsMobileSidebarOpen(false)}
-            className="fixed inset-0 bg-slate-900/50 backdrop-blur-[2px] z-40 md:hidden"
-          />
-        )}
-
-        {/* Sidebar */}
-        <aside className={`
-          fixed md:relative inset-y-0 right-0 w-72 md:w-64 bg-slate-50 border-l border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto shrink-0 scrollbar-hide transition-all duration-300 z-50 md:translate-x-0 md:mt-0
-          ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}
-        `}>
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-lg shrink-0">
-                <ShieldCheck size={28} />
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-900 leading-none">
-                  الإدارة
-                </h2>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                  Mastery Management
-                </p>
-              </div>
+      {/* Sidebar */}
+      <aside className={`
+        fixed lg:relative inset-y-0 right-0 w-72 lg:w-72 bg-white border-l border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto shrink-0 scrollbar-hide z-50 lg:translate-x-0 transition-transform duration-300
+        ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}
+      `}>
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shrink-0">
+              <ShieldCheck size={28} />
             </div>
-            
-            {/* Close Sidebar Button for Mobile Drawer */}
-            <button
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="md:hidden w-10 h-10 rounded-xl bg-slate-200/65 flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-500 transition-all active:scale-95 shrink-0"
-              title="إغلاق القائمة"
-            >
-              <X size={18} />
-            </button>
+            <div>
+              <h2 className="text-xl font-black text-slate-900 leading-none">
+                الإدارة
+              </h2>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                إدارة النظام
+              </p>
+            </div>
+          </div>
+          
+          {/* Close Sidebar Button for Mobile Drawer */}
+          <button
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="lg:hidden w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-500 transition-all active:scale-95 shrink-0"
+            title="إغلاق القائمة"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <nav className="flex flex-col gap-8 pb-10">
+          <div className="space-y-2">
+            <TabButton
+              active={activeTab === "overview"}
+              onClick={() => selectTab("overview")}
+              icon={<LayoutDashboard size={18} />}
+              label="نظرة عامة"
+            />
           </div>
 
-          <nav className="flex flex-col gap-10">
-            <div className="space-y-3">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-4 drop-shadow-sm">
-                الهيكل التنظيمي
-              </p>
-              <TabButton
-                active={activeTab === "grades"}
-                onClick={() => selectTab("grades")}
-                icon={<ListRestart size={18} />}
-                label="المراحل والصفوف"
-              />
-              <TabButton
-                active={activeTab === "classes"}
-                onClick={() => selectTab("classes")}
-                icon={<Building size={18} />}
-                label="الفصول الدراسية"
-              />
-              <TabButton
-                active={activeTab === "subjects"}
-                onClick={() => selectTab("subjects")}
-                icon={<BookOpen size={18} />}
-                label="إسناد المواد"
-              />
-            </div>
+          <div className="space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">
+              الهيكل التنظيمي
+            </p>
+            <TabButton
+              active={activeTab === "grades"}
+              onClick={() => selectTab("grades")}
+              icon={<ListRestart size={18} />}
+              label="المراحل والصفوف"
+            />
+            <TabButton
+              active={activeTab === "classes"}
+              onClick={() => selectTab("classes")}
+              icon={<Building size={18} />}
+              label="الفصول الدراسية"
+            />
+            <TabButton
+              active={activeTab === "subjects"}
+              onClick={() => selectTab("subjects")}
+              icon={<BookOpen size={18} />}
+              label="إسناد المواد"
+            />
+          </div>
 
-            <div className="space-y-3">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-4 drop-shadow-sm">
-                الأشخاص والطلاب
-              </p>
-              <TabButton
-                active={activeTab === "teachers"}
-                onClick={() => selectTab("teachers")}
-                icon={<Users size={18} />}
-                label="المعلمون"
-              />
+          <div className="space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">
+              الأشخاص والطلاب
+            </p>
+            <TabButton
+              active={activeTab === "teachers"}
+              onClick={() => selectTab("teachers")}
+              icon={<Users size={18} />}
+              label="المعلمون"
+            />
               <TabButton
                 active={activeTab === "students"}
                 onClick={() => selectTab("students")}
@@ -1956,6 +2099,12 @@ export function Management({
                 onClick={() => selectTab("quizzes")}
                 icon={<BrainCircuit size={18} />}
                 label="الاختبارات الذكية"
+              />
+              <TabButton
+                active={activeTab === "books"}
+                onClick={() => selectTab("books")}
+                icon={<BookOpen size={18} />}
+                label="بنك الكتب المدرسية"
               />
               <TabButton
                 active={activeTab === "rubrics"}
@@ -2028,6 +2177,7 @@ export function Management({
                   {activeTab === "external_profiles" && "صلاحيات الدخول"}
                   {activeTab === "archive" && "الأرشفة والترفيع"}
                   {activeTab === "system_settings" && "شعار النظام"}
+                  {activeTab === "books" && "بنك الكتب المدرسية"}
                 </p>
               </div>
             </div>
@@ -2115,6 +2265,74 @@ export function Management({
               </button>
             )}
           </div>
+
+          {activeTab === "overview" && (
+            <div className="space-y-6">
+              <TabTitle
+                title="نظرة عامة على النظام"
+                description="احصائيات شاملة للنظام التعليمي وإدارة البيانات"
+              />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-indigo-200 transition-all">
+                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-2">
+                    <Building size={24} />
+                  </div>
+                  <span className="text-3xl font-black text-slate-800">{data.classes?.length || 0}</span>
+                  <span className="text-xs font-bold text-slate-500 text-center">فصل دراسي</span>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-blue-200 transition-all">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-2">
+                    <UserPlus size={24} />
+                  </div>
+                  <span className="text-3xl font-black text-slate-800">{data.students?.length || 0}</span>
+                  <span className="text-xs font-bold text-slate-500 text-center">طالب مسجل</span>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-purple-200 transition-all">
+                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-2">
+                    <Users size={24} />
+                  </div>
+                  <span className="text-3xl font-black text-slate-800">{data.teachers?.length || 0}</span>
+                  <span className="text-xs font-bold text-slate-500 text-center">معلم</span>
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center items-center gap-2 hover:border-amber-200 transition-all">
+                  <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-2">
+                    <BrainCircuit size={24} />
+                  </div>
+                  <span className="text-3xl font-black text-slate-800">{data.quizzes?.length || 0}</span>
+                  <span className="text-xs font-bold text-slate-500 text-center">اختبار إلكتروني</span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                <TabCard title="إعدادات سريعة">
+                  <div className="flex flex-col gap-3">
+                    <button onClick={() => selectTab('students')} className="bg-slate-50 hover:bg-indigo-50 border border-slate-100 p-4 rounded-2xl flex items-center justify-between group transition-all">
+                      <div className="flex items-center gap-3">
+                        <UserPlus size={20} className="text-indigo-500" />
+                        <span className="font-bold text-sm text-slate-700">إدارة الطلاب ونقلهم</span>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:text-indigo-600 group-hover:-translate-x-1 transition-all" />
+                    </button>
+                    <button onClick={() => selectTab('system_settings')} className="bg-slate-50 hover:bg-indigo-50 border border-slate-100 p-4 rounded-2xl flex items-center justify-between group transition-all">
+                      <div className="flex items-center gap-3">
+                        <Settings size={20} className="text-slate-500" />
+                        <span className="font-bold text-sm text-slate-700">إعدادات النظام العامة</span>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:text-indigo-600 group-hover:-translate-x-1 transition-all" />
+                    </button>
+                    <button onClick={() => selectTab('archive')} className="bg-slate-50 hover:bg-rose-50 border border-slate-100 p-4 rounded-2xl flex items-center justify-between group transition-all">
+                      <div className="flex items-center gap-3">
+                        <Archive size={20} className="text-rose-500" />
+                        <span className="font-bold text-sm text-slate-700">ترفيع الطلاب للعام الجديد</span>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:text-rose-600 group-hover:-translate-x-1 transition-all" />
+                    </button>
+                  </div>
+                </TabCard>
+                <div />
+              </div>
+            </div>
+          )}
 
           {activeTab === "grades" && (
             <div className="space-y-6">
@@ -3091,12 +3309,21 @@ export function Management({
                         </option>
                       ))}
                     </select>
+                    <select
+                      value={skillTerm}
+                      onChange={(e) => setSkillTerm(e.target.value as 'term1' | 'term2' | 'full')}
+                      className="flex-1 h-14 bg-white border border-indigo-200 rounded-2xl px-6 font-bold outline-none text-indigo-700 bg-indigo-50/10"
+                    >
+                      <option value="term1">الفصل الدراسي الأول</option>
+                      <option value="term2">الفصل الدراسي الثاني</option>
+                      <option value="full">الفصلين (العام الدراسي كامل)</option>
+                    </select>
                     <input
                       type="text"
                       value={skillName}
                       onChange={(e) => setSkillName(e.target.value)}
                       placeholder="اسم المهارة..."
-                      className="flex-[2] bg-white border border-slate-200 rounded-xl px-4 h-12 font-bold outline-none"
+                      className="flex-[2] bg-white border border-slate-200 rounded-xl px-4 h-14 font-bold outline-none"
                     />
                   </div>
                   <textarea
@@ -3207,36 +3434,13 @@ export function Management({
               title="مصمم الاختبارات الذكية"
               description="أنشئ تجارب تعليمية تفاعلية بأسلوب احترافي"
             >
-              <div className="space-y-12">
                 {/* Professional Quiz Builder Container */}
-                <div className="bg-white rounded-[48px] border border-slate-100 shadow-minimal overflow-hidden">
-                  <div className="bg-slate-900 p-8 text-white flex justify-between items-center">
-                    <div>
-                      <h3 className="text-xl md:text-2xl font-black tracking-tighter flex items-center gap-3">
-                        <BrainCircuit className="text-indigo-400" />
-                        {editingId
-                          ? "تعديل الاختبار الذكي"
-                          : "إنشاء اختبار ذكي جديد"}
-                      </h3>
-                      <p className="text-slate-400 font-bold text-xs mt-1">
-                        صمم تجربة تعليمية بلمسات تقنية حديثة
-                      </p>
-                    </div>
-                    {editingId && (
-                      <button
-                        onClick={resetForms}
-                        className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-white/20 transition-all"
-                      >
-                        <X size={20} />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="p-10 space-y-12">
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                  <div className="p-5 space-y-6">
                     {/* Section 1: Basic Identity */}
-                    <div className="flex flex-col gap-10">
-                      <div className="space-y-8">
-                        <div className="space-y-4">
+                    <div className="flex flex-col gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                        <div className="col-span-12 md:col-span-4 space-y-1.5">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
                             هوية الاختبار وعنوانه
                           </label>
@@ -3245,475 +3449,390 @@ export function Management({
                             value={quizTitle}
                             onChange={(e) => setQuizTitle(e.target.value)}
                             placeholder="مثال: رحلة الفهم القرائي (١)..."
-                            className="w-full h-20 bg-slate-50 border-2 border-slate-100 rounded-3xl px-8 text-xl font-black outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
                           />
                         </div>
 
-                        <div className="space-y-6">
-                          <div className="space-y-3">
+                        <div className="col-span-12 md:col-span-3 space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                            المادة الدراسية المستهدفة
+                          </label>
+                          <select
+                            value={quizSubjectName}
+                            onChange={(e) => {
+                              setQuizSubjectName(e.target.value);
+                              setQuizSubjectIds([]); // reset selection
+                            }}
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
+                          >
+                            <option value="">اختر المادة الدراسية...</option>
+                            {getSubjectOptions().map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="col-span-12 md:col-span-2 space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                            الفصل الدراسي الأكاديمي
+                          </label>
+                          <select
+                            value={quizTerm}
+                            onChange={(e) => setQuizTerm(e.target.value as "term1" | "term2" | "all")}
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
+                          >
+                            <option value="all">كل الفصول</option>
+                            <option value="term1">الفصل الأول</option>
+                            <option value="term2">الفصل الثاني</option>
+                            <option value="term3">الفصل الثالث</option>
+                          </select>
+                        </div>
+
+                        <div className="col-span-12 md:col-span-3 space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 col-span-12">
+                            صورة الواجهة
+                          </label>
+                          <ImageUploader
+                            value={quizImageUrl}
+                            onChange={setQuizImageUrl}
+                            label="صورة الخلفية"
+                            compact={true}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Section 1.5: Reference Book Connection */}
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <BookOpen size={16} className="text-slate-600" />
+                          <h4 className="text-xs font-black text-slate-700">الكتاب المنهجي وسند المعرفة (اختياري)</h4>
+                        </div>
+                        <p className="text-[9px] font-bold text-slate-400">
+                          يرجى ربط هذا الاختبار بكتاب الطالب أو منهج دراسي مخزن كمرجع معرفي لتسهيل توليد الأسئلة أوتوماتيكياً بالذكاء الاصطناعي بدقة متناهية.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                              المادة الدراسية المستهدفة
+                              اختر كتاب الطالب المرجعي
                             </label>
                             <select
-                              value={quizSubjectName}
+                              value={quizBookId}
                               onChange={(e) => {
-                                setQuizSubjectName(e.target.value);
-                                setQuizSubjectIds([]); // reset selection
+                                setQuizBookId(e.target.value);
+                                if (e.target.value) {
+                                  setAiSelectedBookId(e.target.value);
+                                  setAiMode("book");
+                                }
                               }}
-                              className="w-full h-14 bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 text-sm font-black outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
+                              className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
                             >
-                              <option value="">اختر المادة الدراسية...</option>
-                              {getSubjectOptions().map((name) => (
-                                <option key={name} value={name}>
-                                  {name}
+                              <option value="">لا يوجد مرجع كتاب محدد...</option>
+                              {data.studentBooks?.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.title} ({b.subjectName} - {data.grades.find(g => g.id === b.gradeId)?.name || b.gradeId})
                                 </option>
                               ))}
                             </select>
                           </div>
 
-                          {quizSubjectName && (
-                            <div className="space-y-3">
-                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                                الصفوف الدراسية (يمكن اختيار أكثر من صف)
-                              </label>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                {data.subjects
-                                  .filter(
-                                    (s) =>
-                                      !s.isArchived &&
-                                      s.name === quizSubjectName,
-                                  )
-                                  .map((subject) => {
-                                    const isSelected = quizSubjectIds.includes(
-                                      subject.id,
-                                    );
-                                    const grade = data.grades.find(
-                                      (g) => g.id === subject.gradeId,
-                                    );
-                                    return (
-                                      <button
-                                        key={subject.id}
-                                        onClick={() => {
-                                          if (isSelected) {
-                                            setQuizSubjectIds(
-                                              quizSubjectIds.filter(
-                                                (id) => id !== subject.id,
-                                              ),
-                                            );
-                                          } else {
-                                            setQuizSubjectIds([
-                                              ...quizSubjectIds,
-                                              subject.id,
-                                            ]);
-                                          }
-                                        }}
-                                        className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                                          isSelected
-                                            ? "border-indigo-600 bg-indigo-50 text-indigo-700"
-                                            : "border-slate-100 bg-white text-slate-500 hover:border-indigo-200"
-                                        }`}
-                                      >
-                                        <span className="font-bold text-sm">
-                                          {grade?.name || "بدون صف"}
-                                        </span>
-                                        {isSelected && (
-                                          <Check
-                                            size={16}
-                                            className="text-indigo-600"
-                                          />
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                              </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                              أرقام الصفحات / الأجزاء المخصصة المستهدفة
+                            </label>
+                            <input
+                              type="text"
+                              value={quizBookPageReference}
+                              onChange={(e) => setQuizBookPageReference(e.target.value)}
+                              placeholder="مثلاً: الفصل الثاني كاملاً، ص 20 - ص 35"
+                              className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {quizSubjectName && (
+                        <div className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col gap-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                            الصفوف الدراسية المستهدفة (يمكن اختيار أكثر من صف)
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {data.subjects
+                              .filter(
+                                (s) =>
+                                  !s.isArchived &&
+                                  s.name === quizSubjectName,
+                              )
+                              .map((subject) => {
+                                const isSelected = quizSubjectIds.includes(
+                                  subject.id,
+                                );
+                                const grade = data.grades.find(
+                                  (g) => g.id === subject.gradeId,
+                                );
+                                return (
+                                  <button
+                                    key={subject.id}
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setQuizSubjectIds(
+                                          quizSubjectIds.filter(
+                                            (id) => id !== subject.id,
+                                          ),
+                                        );
+                                      } else {
+                                        setQuizSubjectIds([
+                                          ...quizSubjectIds,
+                                          subject.id,
+                                        ]);
+                                      }
+                                    }}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                                      isSelected
+                                        ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                                        : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200"
+                                    }`}
+                                  >
+                                    <span>{grade?.name || "بدون صف"}</span>
+                                    {isSelected && <Check size={12} className="text-indigo-600" />}
+                                  </button>
+                                );
+                              })}
                               {data.subjects.filter(
                                 (s) =>
                                   !s.isArchived && s.name === quizSubjectName,
                               ).length === 0 && (
-                                <p className="text-xs text-red-500 font-bold bg-red-50 p-4 rounded-xl">
+                                <p className="text-xs text-red-500 font-bold bg-red-50 p-2 rounded-lg">
                                   لا توجد صفوف مرتبطة بهذه المادة حالياً.
                                 </p>
                               )}
-                              {quizSubjectIds.length > 0 && (
-                                <p className="text-xs text-indigo-600 font-bold px-2 flex items-center gap-1">
-                                  <Info size={14} /> سيتم تعيين هذا الاختبار
-                                  لجميع فصول الصفوف المحددة بناء على المادة.
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                              صورة الواجهة
-                            </label>
-                            <ImageUploader
-                              value={quizImageUrl}
-                              onChange={setQuizImageUrl}
-                              label="صورة الخلفية"
-                            />
-                          </div>
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                              الفصل الدراسي الأكاديمي
-                            </label>
-                            <div className="grid grid-cols-2 gap-3 p-2 bg-slate-50 rounded-2xl border border-slate-100">
-                              <button
-                                type="button"
-                                onClick={() => setQuizTerm("term1")}
-                                className={`py-6 rounded-2xl font-black text-xs transition-all ${quizTerm === "term1" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
-                              >
-                                الفصل الأول
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setQuizTerm("term2")}
-                                className={`py-6 rounded-2xl font-black text-xs transition-all ${quizTerm === "term2" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
-                              >
-                                الفصل الثاني
-                              </button>
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                              النشر الأولي
-                            </label>
-                            <div className="grid grid-cols-2 gap-3 p-2 bg-slate-50 rounded-2xl border border-slate-100">
-                              <button
-                                type="button"
-                                onClick={() => setQuizStatus("published")}
-                                className={`py-6 rounded-2xl font-black text-xs transition-all ${quizStatus === "published" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
-                              >
-                                نشر مباشر
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setQuizStatus("draft")}
-                                className={`py-6 rounded-2xl font-black text-xs transition-all ${quizStatus === "draft" ? "bg-indigo-600 text-white shadow-lg" : "bg-white text-slate-500 border border-slate-50 hover:bg-slate-100"}`}
-                              >
-                                حفظ كمسودة
-                              </button>
-                            </div>
                           </div>
                         </div>
-                        <div className="flex justify-between items-center relative z-10">
-                          <div>
-                            <h4 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                              <PlusCircle
-                                size={24}
-                                className="text-indigo-600"
-                              />
-                              إضافة الأسئلة
-                            </h4>
-                          </div>
-                          <div className="bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
-                              {quizQuestions.length}
-                            </div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase">
-                              سؤال
-                            </span>
-                          </div>
-                        </div>
+                      )}
 
-                        {/* AI Question Generator Section */}
-                        <div className="bg-gradient-to-br from-indigo-50 to-violet-50 p-6 md:p-8 rounded-[36px] border border-indigo-100/60 shadow-minimal space-y-6 relative z-10 mx-auto w-full md:w-3/4 lg:w-2/3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200">
-                                <Sparkles size={18} className="animate-pulse" />
+                      <div className="flex flex-col lg:flex-row gap-6 mt-5">
+                            {/* AI Generation Sidebar */}
+                            <div className="lg:w-1/4 shrink-0 bg-slate-50 p-6 rounded-[24px] border border-slate-100 flex flex-col gap-4 sticky top-8 h-fit">
+                              <h3 className="text-sm font-black text-slate-800">أدوات توليد الأسئلة</h3>
+                              <div className="flex flex-col bg-white p-1 rounded-2xl border border-slate-200">
+                                <button type="button" onClick={() => setAiMode("lesson")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'lesson' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>توليد باسم الدرس</button>
+                                <button type="button" onClick={() => setAiMode("book")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'book' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>من كتاب الطالب</button>
+                                <button type="button" onClick={() => setAiMode("custom")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'custom' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>توليد حر</button>
                               </div>
-                              <div>
-                                <h5 className="font-black text-indigo-950 text-base">توليد الأسئلة بالذكاء الاصطناعي</h5>
-                                <p className="text-[11px] text-indigo-500 font-bold mt-0.5">صمم أسئلتك بضغطة زر بناءً على بيانات الدرس والصف والمادة</p>
-                              </div>
-                            </div>
-                            <div className="bg-white/80 backdrop-blur-sm border border-indigo-100 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs font-black text-indigo-600">
-                              <span>بيتا</span>
-                            </div>
-                          </div>
-
-                          {/* Toggle Generation Modes */}
-                          <div className="flex bg-indigo-950/5 p-1 rounded-2xl w-full">
-                            <button
-                              onClick={() => setAiMode("lesson")}
-                              className={`flex-1 py-2.5 rounded-xl font-black text-xs transition-all ${aiMode === "lesson" ? "bg-indigo-600 text-white shadow-sm" : "text-indigo-950/60 hover:text-indigo-950"}`}
-                              type="button"
-                              disabled={aiIsGenerating}
-                            >
-                              توليد باسم الدرس (موصى به)
-                            </button>
-                            <button
-                              onClick={() => setAiMode("custom")}
-                              className={`flex-1 py-2.5 rounded-xl font-black text-xs transition-all ${aiMode === "custom" ? "bg-indigo-600 text-white shadow-sm" : "text-indigo-950/60 hover:text-indigo-950"}`}
-                              type="button"
-                              disabled={aiIsGenerating}
-                            >
-                              توليد حر ومخصص
-                            </button>
-                          </div>
-
-                          <div className="space-y-4">
-                            {aiMode === "lesson" ? (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white/40 p-4 rounded-3xl border border-indigo-100/40">
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-indigo-950/60 uppercase tracking-wider block">الصف الدراسي</label>
-                                  <select
-                                    value={aiSelectedGradeId}
-                                    onChange={(e) => setAiSelectedGradeId(e.target.value)}
-                                    className="w-full h-12 bg-white/90 border border-indigo-100 rounded-xl px-4 text-xs font-black outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                                    disabled={aiIsGenerating}
-                                  >
-                                    <option value="">اختر الصف المستهدف...</option>
-                                    {data.grades.map((g) => (
-                                      <option key={g.id} value={g.id}>
-                                        {g.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-indigo-950/60 uppercase tracking-wider block">المادة الدراسية</label>
-                                  <select
-                                    value={aiSelectedSubject}
-                                    onChange={(e) => setAiSelectedSubject(e.target.value)}
-                                    className="w-full h-12 bg-white/90 border border-indigo-100 rounded-xl px-4 text-xs font-black outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                                    disabled={aiIsGenerating}
-                                  >
-                                    <option value="">اختر المادة...</option>
-                                    {getSubjectOptions().map((name) => (
-                                      <option key={name} value={name}>
-                                        {name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="col-span-full space-y-2">
-                                  <label className="text-[10px] font-black text-indigo-950/60 uppercase tracking-wider block">اسم الدرس</label>
-                                  <input
-                                    type="text"
-                                    value={aiLessonName}
-                                    onChange={(e) => setAiLessonName(e.target.value)}
-                                    placeholder="اكتب فقط اسم الدرس بوضوح (مثل: الفاعل، تصنيف الثدييات، جمع الكسور...)"
-                                    className="w-full h-12 bg-white/90 border border-indigo-100 rounded-xl px-4 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm shadow-indigo-50/50 text-slate-800"
-                                    disabled={aiIsGenerating}
-                                  />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black text-indigo-950/60 uppercase tracking-wider block">ما هو موضوع الأسئلة التي تريد توليدها؟</label>
-                                <textarea
-                                  value={aiPrompt}
-                                  onChange={(e) => setAiPrompt(e.target.value)}
-                                  placeholder="مثال: أسئلة في لغتي الجميلة لدرس 'النعت' للطلاب المبتدئين مع إجابات مبسطة..."
-                                  className="w-full h-24 bg-white/90 border border-indigo-100 rounded-2xl p-4 text-sm font-bold resize-none outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm shadow-indigo-50/50"
-                                  disabled={aiIsGenerating}
-                                />
-                              </div>
-                            )}
-
-                            <div className="flex flex-col sm:flex-row items-center gap-4">
-                              <div className="w-full sm:w-auto flex items-center gap-3 bg-white/90 border border-indigo-100 rounded-2xl p-2 shrink-0">
-                                <span className="text-[10px] font-black text-indigo-950/60 uppercase tracking-wider px-2">عدد الأسئلة:</span>
-                                <div className="flex items-center gap-1">
-                                  {[3, 5, 10].map(count => (
-                                    <button
-                                      key={count}
-                                      onClick={() => setAiQuestionCount(count)}
-                                      className={`w-9 h-9 rounded-xl font-black text-xs transition-all ${aiQuestionCount === count ? 'bg-indigo-600 text-white shadow-md' : 'bg-transparent text-indigo-950/60 hover:bg-slate-100'}`}
-                                      type="button"
-                                      disabled={aiIsGenerating}
-                                    >
-                                      {count}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <button
-                                onClick={handleGenerateQuestionsWithAI}
-                                disabled={aiIsGenerating}
-                                className={`w-full sm:flex-1 h-13 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all ${
-                                  aiIsGenerating 
-                                    ? 'bg-indigo-400 text-white cursor-not-allowed shadow-none' 
-                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20 active:scale-[0.98]'
-                                }`}
-                                type="button"
-                              >
-                                {aiIsGenerating ? (
-                                  <>
-                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    جاري صياغة الأسئلة...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Sparkles size={14} />توليد الأسئلة الذكية
-                                  </>
+                              <div className="space-y-4">
+                                {aiMode === "lesson" && (
+                                  <div className="space-y-4 bg-white p-4 rounded-2xl border border-slate-100">
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase">الصف الدراسي</label>
+                                      <select value={aiSelectedGradeId} onChange={(e) => setAiSelectedGradeId(e.target.value)} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
+                                        <option value="">اختر الصف...</option>
+                                        {data.grades.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                      </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase">المادة الدراسية</label>
+                                      <select value={aiSelectedSubject} onChange={(e) => setAiSelectedSubject(e.target.value)} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
+                                        <option value="">اختر المادة...</option>
+                                        {getSubjectOptions().map(name => <option key={name} value={name}>{name}</option>)}
+                                      </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase">اسم الدرس</label>
+                                      <input type="text" value={aiLessonName} onChange={(e) => setAiLessonName(e.target.value)} disabled={aiIsGenerating} placeholder="مثال: الفاعل" className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500" />
+                                    </div>
+                                  </div>
                                 )}
-                              </button>
-                            </div>
-                          </div>
-
-                          {aiError && (
-                            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl text-xs font-bold text-rose-600 flex items-center gap-2">
-                              <AlertCircle size={14} className="shrink-0" />
-                              <span>{aiError}</span>
-                            </div>
-                          )}
-
-                          {aiSuccess && (
-                            <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-xs font-bold text-emerald-600 flex items-center gap-2">
-                              <CheckCircle2 size={14} className="shrink-0" />
-                              <span>{aiSuccess}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-8 relative z-10 mx-auto w-full md:w-3/4 lg:w-2/3">
-                          {quizQuestions.map((q, qIndex) => (
-                            <div
-                              key={q.id}
-                              className="bg-white p-6 rounded-[24px] shadow-sm border border-slate-150 flex flex-col gap-6 relative"
-                            >
-                              <div className="absolute top-0 right-0 w-10 h-10 bg-indigo-50 rounded-bl-3xl flex items-center justify-center font-black text-xs text-indigo-600">
-                                {qIndex + 1}
-                              </div>
-                              <div className="space-y-4 pt-4">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">
-                                  نص السؤال
-                                </label>
-                                <textarea
-                                  value={q.text}
-                                  onChange={(e) => {
-                                    const n = [...quizQuestions];
-                                    n[qIndex].text = e.target.value;
-                                    setQuizQuestions(n);
-                                  }}
-                                  placeholder="بداية نص السؤال..."
-                                  className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm resize-none outline-none focus:border-indigo-300 focus:bg-white transition-all shadow-sm"
-                                />
-                                <div className="flex items-center gap-2">
-                                  <ImageUploader
-                                    value={q.imageUrl || ""}
-                                    onChange={(val) => {
-                                      const n = [...quizQuestions];
-                                      n[qIndex].imageUrl = val;
-                                      setQuizQuestions(n);
-                                    }}
-                                    label="صورة مرتبطة بالسؤال"
-                                    iconOnly={true}
-                                  />
-                                  <button
-                                    onClick={() =>
-                                      setQuizQuestions(
-                                        quizQuestions.filter(
-                                          (_, i) => i !== qIndex,
-                                        ),
-                                      )
-                                    }
-                                    className="h-10 px-4 bg-rose-50 text-rose-500 rounded-xl font-black text-xs flex items-center justify-center gap-2 hover:bg-rose-500 hover:text-white transition-all cursor-pointer"
-                                  >
-                                    <Trash2 size={14} /> حذف السؤال
-                                  </button>
+                                {aiMode === "book" && (
+                                  <div className="space-y-4 bg-white p-4 rounded-2xl border border-slate-100">
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase">اختر المنهج</label>
+                                      <select value={aiSelectedBookId} onChange={(e) => { setAiSelectedBookId(e.target.value); setAiSelectedChapterIds([]); }} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
+                                        <option value="">اختر الكتاب...</option>
+                                        {data.studentBooks?.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+                                      </select>
+                                    </div>
+                                    {aiSelectedBookId && (
+                                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase">حدد الفصول</label>
+                                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
+                                          {data.studentBooks?.find(b => b.id === aiSelectedBookId)?.chapters?.map(ch => (
+                                            <label key={ch.id} className="flex gap-2 items-center p-2 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-indigo-200">
+                                              <input type="checkbox" disabled={aiIsGenerating} checked={aiSelectedChapterIds.includes(ch.id)} onChange={(e) => { if (e.target.checked) setAiSelectedChapterIds([...aiSelectedChapterIds, ch.id]); else setAiSelectedChapterIds(aiSelectedChapterIds.filter(id => id !== ch.id)); }} className="w-4 h-4 text-indigo-600 rounded" />
+                                              <div className="flex flex-col text-right">
+                                                <span className="text-xs font-bold text-slate-700">{ch.title}</span>
+                                                {ch.pages && (
+                                                  <span className="text-[10px] font-bold text-indigo-500 mt-0.5">ص: {ch.pages}</span>
+                                                )}
+                                              </div>
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {aiMode === "custom" && (
+                                  <div className="space-y-2 bg-white p-4 rounded-2xl border border-slate-100">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase">وصف الأسئلة</label>
+                                    <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} disabled={aiIsGenerating} placeholder="مثال: أسئلة في لغتي الجميلة..." className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-2 text-xs font-bold outline-none focus:border-indigo-500 resize-none" />
+                                  </div>
+                                )}
+                                <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase">عدد الأسئلة</label>
+                                  <div className="flex gap-2">
+                                    {[3, 5, 10].map(count => (
+                                      <button key={count} type="button" disabled={aiIsGenerating} onClick={() => setAiQuestionCount(count)} className={`flex-1 py-1.5 rounded-xl text-xs font-black transition-all ${aiQuestionCount === count ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{count}</button>
+                                    ))}
+                                  </div>
                                 </div>
+                                <button type="button" onClick={handleGenerateQuestionsWithAI} disabled={aiIsGenerating} className={`w-full h-11 rounded-xl font-black text-xs flex justify-center items-center gap-2 transition-all ${aiIsGenerating ? 'bg-indigo-400 text-white cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.98]'}`}>
+                                  {aiIsGenerating ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> جاري التوليد ...</> : <><Sparkles size={14} /> توليد الأسئلة الذكية</>}
+                                </button>
+                                {aiError && <div className="text-xs text-rose-500 font-bold p-3 bg-rose-50 rounded-xl flex items-start gap-2"><AlertCircle size={14} className="shrink-0 mt-0.5" /><span>{aiError}</span></div>}
+                                {aiSuccess && <div className="text-xs text-emerald-500 font-bold p-3 bg-emerald-50 rounded-xl flex items-start gap-2"><CheckCircle2 size={14} className="shrink-0 mt-0.5"/><span>{aiSuccess}</span></div>}
                               </div>
+                            </div>
 
-                              <div className="space-y-3">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">
-                                  الخيارات (اختر الإجابة الصحيحة)
-                                </label>
-                                <div className="grid grid-cols-1 gap-2">
-                                  {q.options.map((opt, optIdx) => (
+                            {/* Question Area (Center/Right) */}
+                            <div className="flex-1 space-y-6">
+                              <h3 className="text-lg font-black text-slate-800">الأسئلة ({quizQuestions.length})</h3>
+                              <div className="grid grid-cols-1 gap-6">
+                                  {quizQuestions.map((q, qIndex) => (
                                     <div
-                                      key={optIdx}
-                                      className={`p-2 rounded-xl border-2 flex flex-col md:flex-row items-start md:items-center gap-3 transition-all ${q.correctAnswerIndex === optIdx ? "border-emerald-400 bg-emerald-50/50" : "border-slate-100 bg-white hover:border-indigo-100"}`}
+                                      key={q.id}
+                                      className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 flex flex-col gap-6 relative transition-all"
                                     >
-                                      <div className="flex items-center gap-2 w-full">
-                                        <button
-                                          onClick={() => {
-                                            const n = [...quizQuestions];
-                                            n[qIndex].correctAnswerIndex =
-                                              optIdx;
-                                            setQuizQuestions(n);
-                                          }}
-                                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0 font-black text-[12px] cursor-pointer ${q.correctAnswerIndex === optIdx ? "bg-emerald-500 text-white shadow-md" : "bg-slate-100 text-slate-500 hover:bg-emerald-100 hover:text-emerald-600"}`}
-                                        >
-                                          {q.correctAnswerIndex === optIdx
-                                            ? "✓"
-                                            : optIdx + 1}
-                                        </button>
-                                        <input
-                                          type="text"
-                                          value={opt}
+                                      <div className="absolute top-0 right-0 w-10 h-10 bg-indigo-50 rounded-bl-3xl flex items-center justify-center font-black text-xs text-indigo-600">
+                                        {qIndex + 1}
+                                      </div>
+                                      <div className="space-y-4 pt-4">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase px-1">
+                                          نص السؤال
+                                        </label>
+                                        <textarea
+                                          value={q.text}
                                           onChange={(e) => {
                                             const n = [...quizQuestions];
-                                            n[qIndex].options[optIdx] =
-                                              e.target.value;
+                                            n[qIndex].text = e.target.value;
                                             setQuizQuestions(n);
                                           }}
-                                          placeholder={`الخيار ${optIdx + 1}`}
-                                          className="flex-1 bg-transparent font-bold text-sm text-slate-800 outline-none h-10 px-2"
+                                          placeholder="بداية نص السؤال..."
+                                          className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm resize-none outline-none focus:border-indigo-300 focus:bg-white transition-all shadow-sm"
                                         />
                                         <ImageUploader
-                                          value={q.optionImages?.[optIdx] || ""}
+                                          value={q.imageUrl || ""}
                                           onChange={(val) => {
                                             const n = [...quizQuestions];
-                                            if (!n[qIndex].optionImages)
-                                              n[qIndex].optionImages = [
-                                                "",
-                                                "",
-                                                "",
-                                                "",
-                                              ];
-                                            n[qIndex].optionImages![optIdx] =
-                                              val;
+                                            n[qIndex].imageUrl = val;
                                             setQuizQuestions(n);
                                           }}
+                                          label="صورة مرتبطة بالسؤال"
                                           iconOnly={true}
-                                          label="صورة للخيار"
                                         />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setQuizQuestions(
+                                              quizQuestions.filter(
+                                                (_, i) => i !== qIndex,
+                                              ),
+                                            )
+                                          }
+                                          className="h-10 px-4 bg-rose-50 text-rose-500 rounded-xl font-black text-xs flex items-center justify-center gap-2 hover:bg-rose-500 hover:text-white transition-all cursor-pointer"
+                                        >
+                                          <Trash2 size={14} /> حذف السؤال
+                                        </button>
+                                      </div>
+
+                                      <div className="space-y-3">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase px-1">
+                                          الخيارات (اختر الإجابة الصحيحة)
+                                        </label>
+                                        <div className="grid grid-cols-1 gap-2">
+                                          {q.options.map((opt, optIdx) => (
+                                            <div
+                                              key={optIdx}
+                                              className={`p-2 rounded-xl border-2 flex flex-col md:flex-row items-start md:items-center gap-3 transition-all ${q.correctAnswerIndex === optIdx ? "border-emerald-400 bg-emerald-50/50" : "border-slate-100 bg-white hover:border-indigo-100"}`}
+                                            >
+                                              <div className="flex items-center gap-2 w-full">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const n = [...quizQuestions];
+                                                    n[qIndex].correctAnswerIndex =
+                                                      optIdx;
+                                                    setQuizQuestions(n);
+                                                  }}
+                                                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0 font-black text-[12px] cursor-pointer ${q.correctAnswerIndex === optIdx ? "bg-emerald-500 text-white shadow-md" : "bg-slate-100 text-slate-500 hover:bg-emerald-100 hover:text-emerald-600"}`}
+                                                >
+                                                  {q.correctAnswerIndex === optIdx
+                                                    ? "✓"
+                                                    : optIdx + 1}
+                                                </button>
+                                                <input
+                                                  type="text"
+                                                  value={opt}
+                                                  onChange={(e) => {
+                                                    const n = [...quizQuestions];
+                                                    n[qIndex].options[optIdx] =
+                                                      e.target.value;
+                                                    setQuizQuestions(n);
+                                                  }}
+                                                  placeholder={`الخيار ${optIdx + 1}`}
+                                                  className="flex-1 bg-transparent font-bold text-sm text-slate-800 outline-none h-10 px-2"
+                                                />
+                                                <ImageUploader
+                                                  value={q.optionImages?.[optIdx] || ""}
+                                                  onChange={(val) => {
+                                                    const n = [...quizQuestions];
+                                                    if (!n[qIndex].optionImages)
+                                                      n[qIndex].optionImages = ["", "", "", ""];
+                                                    n[qIndex].optionImages![optIdx] = val;
+                                                    setQuizQuestions(n);
+                                                  }}
+                                                  iconOnly={true}
+                                                  label="صورة للخيار"
+                                                />
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
-                                </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setQuizQuestions([
+                                        ...quizQuestions,
+                                        {
+                                          id: `q_${Date.now()}_${Math.random()}`,
+                                          text: "",
+                                          options: ["", "", "", ""],
+                                          correctAnswerIndex: 0,
+                                          imageUrl: "",
+                                          optionImages: ["", "", "", ""],
+                                        },
+                                      ]);
+                                    }}
+                                    className="w-full py-8 border-2 border-dashed border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-500 rounded-[24px] font-black flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"
+                                  >
+                                    <PlusCircle size={32} />
+                                    <span>أضف سؤال جديد</span>
+                                  </button>
                               </div>
                             </div>
-                          ))}
-
-                          <button
-                            onClick={() => {
-                              setQuizQuestions([
-                                ...quizQuestions,
-                                {
-                                  id: `q_${Date.now()}_${Math.random()}`,
-                                  text: "",
-                                  options: ["", "", "", ""],
-                                  correctAnswerIndex: 0,
-                                  imageUrl: "",
-                                  optionImages: ["", "", "", ""],
-                                },
-                              ]);
-                            }}
-                            className="w-full py-8 border-2 border-dashed border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-500 rounded-[24px] font-black flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"
-                          >
-                            <PlusCircle size={32} />
-                            <span>أضف سؤال جديد</span>
-                          </button>
-                        </div>
-                      </div>
+                          </div>
 
                       {/* Master Publish Button */}
                       <div className="pt-8 border-t border-slate-100">
-                        <div className="bg-slate-50/50 rounded-[48px] p-2 ring-1 ring-slate-100/50 shadow-xl">
+                        <div className="bg-slate-50/50 rounded-[48px] p-2 ring-1 ring-slate-100/50 shadow-xl flex flex-col md:flex-row gap-2">
                           <button
                             onClick={handleSaveQuiz}
                             disabled={isProcessing}
-                            className={`w-full min-h-[5rem] md:min-h-[6rem] py-6 rounded-[36px] font-black text-xl flex flex-col md:flex-row items-center justify-center gap-3 transition-all active:scale-[0.98] ${!quizTitle || quizSubjectIds.length === 0 || quizQuestions.length === 0 ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" : "bg-slate-900 text-white hover:bg-indigo-600 hover:shadow-indigo-500/20 hover:shadow-xl"}`}
+                            className={`flex-[3] min-h-[5rem] md:min-h-[6rem] py-6 rounded-[36px] font-black text-xl flex flex-col md:flex-row items-center justify-center gap-3 transition-all active:scale-[0.98] ${!quizTitle || quizSubjectIds.length === 0 || quizQuestions.length === 0 ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" : "bg-slate-900 text-white hover:bg-indigo-600 hover:shadow-indigo-500/20 hover:shadow-xl"}`}
                           >
                             {isProcessing ? (
                               <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin" />
@@ -3737,6 +3856,15 @@ export function Management({
                               </>
                             )}
                           </button>
+                          
+                          <button
+                            type="button"
+                            onClick={resetForms}
+                            className="flex-[1] min-h-[5rem] md:min-h-[6rem] py-6 rounded-[36px] bg-white border-2 border-slate-200 text-slate-500 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 font-black text-lg flex flex-col md:flex-row items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                          >
+                            <X size={24} />
+                            <span>إلغاء الأمر</span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -3747,7 +3875,23 @@ export function Management({
                     <h4 className="font-black text-slate-800">
                       الاختبارات الحالية
                     </h4>
-                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto mt-4 sm:mt-0">
+                      {/* Stage Filter */}
+                      <select
+                        value={filterQuizStage}
+                        onChange={(e) => {
+                          setFilterQuizStage(e.target.value);
+                          setFilterQuizGradeId("");
+                          setFilterQuizSubjectId("");
+                        }}
+                        className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 font-bold text-xs outline-none cursor-pointer focus:border-indigo-400 focus:bg-white transition-all"
+                      >
+                        <option value="">كل المراحل</option>
+                        <option value="الابتدائي">المرحلة الابتدائية</option>
+                        <option value="المتوسط">المرحلة المتوسطة</option>
+                        <option value="الثانوي">المرحلة الثانوية</option>
+                      </select>
+
                       {/* Grade Filter */}
                       <select
                         value={filterQuizGradeId}
@@ -3760,11 +3904,24 @@ export function Management({
                         <option value="">كل الصفوف</option>
                         {data.grades
                           .filter((g) => !g.isArchived)
+                          .filter((g) => !filterQuizStage || g.name.includes(filterQuizStage))
                           .map((g) => (
                             <option key={g.id} value={g.id}>
                               {g.name}
                             </option>
                           ))}
+                      </select>
+
+                      {/* Term Filter */}
+                      <select
+                        value={filterQuizTerm}
+                        onChange={(e) => setFilterQuizTerm(e.target.value)}
+                        className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 font-bold text-xs outline-none cursor-pointer focus:border-indigo-400 focus:bg-white transition-all"
+                      >
+                        <option value="">كل الفصول الدراسية</option>
+                        <option value="term1">الفصل الأول</option>
+                        <option value="term2">الفصل الثاني</option>
+                        <option value="full">طوال العام</option>
                       </select>
 
                       {/* Subject Filter */}
@@ -3781,6 +3938,11 @@ export function Management({
                               !filterQuizGradeId ||
                               s.gradeId === filterQuizGradeId,
                           )
+                          .filter((s) => {
+                            if (!filterQuizStage) return true;
+                            const g = data.grades.find(gr => gr.id === s.gradeId);
+                            return g && g.name.includes(filterQuizStage);
+                          })
                           .map((s) => {
                             const grade = data.grades.find(
                               (g) => g.id === s.gradeId,
@@ -3825,45 +3987,70 @@ export function Management({
                           (!subject || subject.gradeId !== filterQuizGradeId)
                         )
                           return false;
+                        if (
+                          filterQuizStage &&
+                          (!subject || !data.grades.find(g => g.id === subject.gradeId)?.name.includes(filterQuizStage))
+                        )
+                          return false;
+                        if (
+                          filterQuizTerm &&
+                          q.term !== filterQuizTerm
+                        )
+                          return false;
                         return true;
                       })
                       .filter((quiz) => quiz.title.includes(searchQuery))
-                      .map((quiz) => (
+                      .map((quiz) => {
+                        let classNames = "كل الفصول";
+                        if (quiz.classIds && quiz.classIds.length > 0) {
+                          classNames = quiz.classIds.map(cid => data.classes.find(c => c.id === cid)?.name).filter(Boolean).join("، ");
+                        }
+                        
+                        let termName = "";
+                        if (quiz.term === 'term1') termName = "الفصل الأول";
+                        if (quiz.term === 'term2') termName = "الفصل الثاني";
+                        if (quiz.term === 'full') termName = "طوال العام";
+
+                        return (
                         <motion.div
                           key={quiz.id}
                           initial={{ opacity: 0, scale: 0.95 }}
                           animate={{ opacity: 1, scale: 1 }}
                           className="group bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all overflow-hidden flex flex-col"
                         >
-                          <div className="h-16 bg-slate-100 relative overflow-hidden shrink-0">
+                          {/* Image Container */}
+                          <div className="h-24 bg-slate-50 relative overflow-hidden shrink-0 border-b border-slate-100">
                             {quiz.imageUrl ? (
                               <img
                                 src={quiz.imageUrl}
-                                alt=""
-                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                alt={quiz.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90"
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                              <div className="w-full h-full bg-slate-100 flex items-center justify-center">
                                 <BrainCircuit
-                                  size={20}
-                                  className="text-white/20"
+                                  size={40}
+                                  className="text-slate-200 absolute -right-4 -bottom-4"
                                 />
                               </div>
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent" />
                             <div className="absolute top-2 right-2 flex gap-1">
                               <span
-                                className={`px-1.5 py-0.5 rounded-sm text-[8px] font-black border backdrop-blur-md ${quiz.status === "published" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" : "bg-amber-500/20 text-amber-300 border-amber-500/20"}`}
+                                className={`px-1.5 py-0.5 rounded-sm text-[8px] font-black border backdrop-blur-md shadow-sm ${quiz.status === "published" ? "bg-emerald-500 text-white border-emerald-600" : "bg-amber-500 text-white border-amber-600"}`}
                               >
                                 {quiz.status === "published"
                                   ? "منشور"
                                   : "مسودة"}
                               </span>
                             </div>
-                            <div className="absolute bottom-2 right-3 left-3">
-                              <p className="text-[8px] font-black text-indigo-300 uppercase tracking-widest mb-0.5 flex items-center gap-1 line-clamp-1">
-                                <BookOpen size={8} />
+                          </div>
+
+                          {/* Quiz Information Container */}
+                          <div className="p-3 bg-white flex-1 flex flex-col justify-start relative">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                              <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100/50 flex items-center gap-1">
+                                <BookOpen size={9} />
                                 {quiz.subjectName ||
                                   (quiz.subjectIds && quiz.subjectIds.length > 0
                                     ? data.subjects
@@ -3873,14 +4060,22 @@ export function Management({
                                         .map((s) => s.name)
                                         .join("، ")
                                     : "مادة محذوفة")}
-                              </p>
-                              <h5
-                                className="text-xs font-black text-white leading-tight line-clamp-1"
-                                title={quiz.title}
-                              >
-                                {quiz.title}
-                              </h5>
+                              </span>
+                              {termName && (
+                                <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100/50">
+                                  {termName}
+                                </span>
+                              )}
                             </div>
+                            
+                            <h5
+                              className="text-sm font-black text-slate-800 leading-tight line-clamp-2 mb-1"
+                              title={quiz.title}
+                            >
+                              {quiz.title}
+                            </h5>
+                            
+                            <p className="text-[10px] text-slate-500 font-bold mb-2 line-clamp-1 truncate w-full" title={classNames}>الصفوف: {classNames}</p>
                           </div>
 
                           {(() => {
@@ -3999,14 +4194,14 @@ export function Management({
                             );
                           })()}
                         </motion.div>
-                      ))}
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-            </SectionContainer>
-          )}
+              </SectionContainer>
+            )}
 
-          {activeTab === "system_settings" && (
+            {activeTab === "system_settings" && (
             <SectionContainer
               title="شعار وإعدادات النظام"
               description="إعدادات الهوية البصرية وشعار المدرسة"
@@ -4059,6 +4254,368 @@ export function Management({
                     <label htmlFor="allowSupervisorPeerVisits" className="text-xs font-black text-slate-705 select-none cursor-pointer">
                       السماح للمشرفين بالاطلاع على الزيارات التبادلية ونقل الأثر ونقاشاتها بين المعلمين
                     </label>
+                  </div>
+                </div>
+              </div>
+            </SectionContainer>
+          )}
+
+          {activeTab === "books" && (
+            <SectionContainer
+              title="بنك الكتب المدرسية والمناهج"
+              description="حمّل مناهج الطلاب ليرتكز عليها الذكاء الاصطناعي في صياغة وتوليد أسئلة الاختبارات الذكية بدقة مذهلة"
+            >
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+                <div className="xl:col-span-5 bg-white p-6 md:p-8 rounded-[36px] border border-slate-100 shadow-minimal space-y-6">
+                  <h3 className="text-lg font-black text-slate-800 border-b border-slate-50 pb-4">
+                    {editingBookId ? "تعديل كتاب / منهج دراسي" : "إضافة كتاب / منهج دراسي جديد"}
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase">اسم الكتاب أو المنهج:</label>
+                      <input
+                        type="text"
+                        value={bookTitle}
+                        onChange={(e) => setBookTitle(e.target.value)}
+                        placeholder="مثال: كتاب العلوم - الصف الخامس"
+                        className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all text-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">الصف الدراسي:</label>
+                        <select
+                          value={bookSelectedGradeId}
+                          onChange={(e) => setBookSelectedGradeId(e.target.value)}
+                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 font-bold outline-none text-sm"
+                        >
+                          <option value="">اختر الصف...</option>
+                          {data.grades.map((g) => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">الفصل الدراسي:</label>
+                        <select
+                          value={bookTerm}
+                          onChange={(e) => setBookTerm(e.target.value as any)}
+                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 font-bold outline-none text-sm"
+                        >
+                          <option value="term1">الفصل الأول</option>
+                          <option value="term2">الفصل الثاني</option>
+                          <option value="full">العام الدراسي كامل</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase">المادة الدراسية:</label>
+                      <select
+                        value={bookSubjectName}
+                        onChange={(e) => setBookSubjectName(e.target.value)}
+                        className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 font-bold outline-none text-sm"
+                      >
+                        <option value="">اختر المادة...</option>
+                        {Array.from(new Set(data.subjects.map((s) => s.name))).map((subjectName) => (
+                          <option key={subjectName} value={subjectName}>{subjectName}</option>
+                        ))}
+                        <option value="CUSTOM">مادة مخصصة أخرى...</option>
+                      </select>
+                    </div>
+
+                    {bookSubjectName === "CUSTOM" && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">اسم المادة المخصصة:</label>
+                        <input
+                          type="text"
+                          placeholder="اكتب اسم المادة..."
+                          onBlur={(e) => setBookSubjectName(e.target.value)}
+                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold outline-none text-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-6 space-y-4">
+                    <h4 className="font-black text-xs text-slate-700">إضافة الفصول / الأبواب والدروس:</h4>
+                    
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase">عنوان الدرس / الفصل:</label>
+                          <input
+                            type="text"
+                            value={newChapterTitle}
+                            onChange={(e) => setNewChapterTitle(e.target.value)}
+                            placeholder="مثال: الفصل الأول: دورات حياة النباتات"
+                            className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 font-bold outline-none text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase">أرقام الصفحات / البند <span className="text-[9px] font-medium text-slate-400">(اختياري)</span>:</label>
+                          <input
+                            type="text"
+                            value={newChapterPages}
+                            onChange={(e) => setNewChapterPages(e.target.value)}
+                            placeholder="مثلاً: 12-15 أو الجزء الأول"
+                            className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 font-bold outline-none text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[9px] font-black text-slate-400 uppercase">محتوى أو شرح تفصيلي للدرس:</label>
+                          {newChapterContent && newChapterContent.startsWith("data:application/pdf;") && (
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                              تم إرفاق ملف الدرس PDF بنجاح 📁
+                            </span>
+                          )}
+                        </div>
+                        <textarea
+                          value={newChapterContent.startsWith("data:application/pdf;") ? "" : newChapterContent}
+                          onChange={(e) => setNewChapterContent(e.target.value)}
+                          placeholder="اكتب أو الصق شرح الدرس أو الكلمات المفتاحية لمساعدة الذكاء الاصطناعي... (أو اتركه فارغاً وارفع ملف PDF بالأسفل لتلخيصه)"
+                          className="w-full h-24 bg-white border border-slate-200 rounded-xl p-3 font-medium outline-none text-xs resize-y"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase">ملف الدرس (PDF) <span className="text-[9px] font-medium text-slate-400">(اختياري في حال كتابة الشرح بالأعلى)</span>:</label>
+                        <PdfUploader
+                          value={newChapterContent}
+                          onChange={setNewChapterContent}
+                          label="ملف PDF"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!newChapterTitle.trim()) {
+                              alert("يرجى كتابة عنوان للدرس للتوليد له");
+                              return;
+                            }
+                            setAiChapterGenerating(true);
+                            try {
+                              const selectedGradeName = data.grades.find(g => g.id === bookSelectedGradeId)?.name || "";
+                              const isPdf = newChapterContent.startsWith("data:application/pdf;");
+                              const response = await fetch("/api/gemini/generate-chapter-content", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  chapterTitle: newChapterTitle,
+                                  subject: bookSubjectName,
+                                  grade: selectedGradeName,
+                                  pdfData: isPdf ? newChapterContent : undefined
+                                })
+                              });
+                              const resData = await response.json();
+                              if (resData.success && resData.content) {
+                                setNewChapterContent(resData.content);
+                              } else {
+                                alert("لم نتمكن من توليد المحتوى. " + (resData.error || ""));
+                              }
+                            } catch (e: any) {
+                              alert("حدث خطأ أثناء التوليد: " + e.message);
+                            } finally {
+                              setAiChapterGenerating(false);
+                            }
+                          }}
+                          disabled={aiChapterGenerating}
+                          className="py-2.5 px-3 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100/50 text-indigo-700 rounded-xl font-bold text-[10px] flex items-center justify-center gap-1 transition-all disabled:opacity-50"
+                        >
+                          <Sparkles size={12} className="text-indigo-500" />
+                          {aiChapterGenerating ? "جاري شرح وتلخيص الدرس من خلال الذكاء الاصطناعي..." : "توليد ملخص شرح الدرس تلقائياً بالذكاء الاصطناعي ✨"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newChapterTitle.trim() || !newChapterContent.trim()) {
+                              alert("يرجى ملء عنوان ومحتوى الدرس أولاً");
+                              return;
+                            }
+
+                            if (editingChapterIndex !== null) {
+                              const updated = [...bookChapters];
+                              updated[editingChapterIndex] = {
+                                id: bookChapters[editingChapterIndex].id,
+                                title: newChapterTitle.trim(),
+                                content: newChapterContent.trim(),
+                                pages: newChapterPages.trim() || undefined
+                              };
+                              setBookChapters(updated);
+                              setEditingChapterIndex(null);
+                            } else {
+                              setBookChapters([
+                                ...bookChapters,
+                                {
+                                  id: "chap_" + Date.now() + Math.random().toString(36).substr(2, 4),
+                                  title: newChapterTitle.trim(),
+                                  content: newChapterContent.trim(),
+                                  pages: newChapterPages.trim() || undefined
+                                }
+                              ]);
+                            }
+
+                            setNewChapterTitle("");
+                            setNewChapterContent("");
+                            setNewChapterPages("");
+                          }}
+                          className="py-3 px-4 bg-slate-900 border border-slate-900 text-white rounded-xl font-black text-xs hover:bg-slate-800 transition-all shadow-sm"
+                        >
+                          {editingChapterIndex !== null ? "تحديث الدرس" : "إضافة الدرس المنهجي"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {bookChapters.length > 0 && (
+                      <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-hide pr-1">
+                        {bookChapters.map((chap, idx) => (
+                          <div key={chap.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between gap-3 shadow-sm">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-black text-xs text-slate-700 truncate flex items-center gap-1.5">
+                                <span>{chap.title}</span>
+                                {chap.pages && (
+                                  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                    ص: {chap.pages}
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5 truncate">{chap.content.substring(0, 60)}...</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingChapterIndex(idx);
+                                  setNewChapterTitle(chap.title);
+                                  setNewChapterContent(chap.content);
+                                  setNewChapterPages(chap.pages || "");
+                                }}
+                                className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBookChapters(bookChapters.filter((_, i) => i !== idx));
+                                  if (editingChapterIndex === idx) {
+                                    setEditingChapterIndex(null);
+                                    setNewChapterTitle("");
+                                    setNewChapterContent("");
+                                    setNewChapterPages("");
+                                  }
+                                }}
+                                className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetForms();
+                      }}
+                      className="py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-black text-xs hover:bg-slate-200 transition-all flex-1"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!bookTitle.trim()) {
+                          alert("يرجى كتابة عنوان للكتاب");
+                          return;
+                        }
+                        if (!bookSelectedGradeId) {
+                          alert("يرجى تحديد الصف الدراسي");
+                          return;
+                        }
+                        if (!bookSubjectName) {
+                          alert("يرجى تحديد المادة الدراسية");
+                          return;
+                        }
+                        await handleSaveBook();
+                      }}
+                      className="py-3 px-6 bg-indigo-600 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 flex-1"
+                    >
+                      {editingBookId ? "تعديل الكتاب" : "حفظ المنهج الدراسي"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="xl:col-span-7 bg-white p-6 md:p-8 rounded-[36px] border border-slate-100 shadow-minimal space-y-6">
+                  <h3 className="text-lg font-black text-slate-800 border-b border-slate-50 pb-4">
+                    المناهج والكتب المدخلة حالياً
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {data.studentBooks?.map((book) => {
+                      const gr = data.grades.find((g) => g.id === book.gradeId);
+                      return (
+                        <div key={book.id} className="bg-slate-50 p-5 rounded-3xl border border-slate-100 shadow-sm hover:border-indigo-100 transition-all relative group flex flex-col justify-between h-44">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[9px] font-black uppercase text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">{gr?.name || "صف متميز"}</span>
+                              <span className="text-[9px] font-black uppercase text-slate-500 bg-slate-200/50 px-2.5 py-1 rounded-full">
+                                {book.term === "term1" ? "الفصل الأول" : book.term === "term2" ? "الفصل الثاني" : "العام كامل"}
+                              </span>
+                            </div>
+                            <h4 className="font-black text-slate-800 text-sm mt-3 line-clamp-1">{book.title}</h4>
+                            <p className="text-xs font-bold text-slate-400 mt-1">المادة: {book.subjectName}</p>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-4 border-t border-slate-100/50">
+                            <p className="text-[10px] font-black text-indigo-500">عدد الفصول الكلي: {book.chapters?.length || 0}</p>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleEditBook(book)}
+                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                title="تعديل هذا الكتاب"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (confirm("هل تريد حذف هذا المنهج نهائياً؟")) {
+                                    try {
+                                      await firestoreService.deleteItem("studentBooks", book.id);
+                                    } catch (err) {
+                                      alert("فشل حذف المنهج");
+                                    }
+                                  }
+                                }}
+                                className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                                title="حذف هذا الكتاب"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {(!data.studentBooks || data.studentBooks.length === 0) && (
+                      <div className="col-span-1 md:col-span-2 py-12 text-center text-slate-400 font-semibold italic text-xs">
+                        لا توجد كتب دراسية مضافة حالياً. حمّل كتاباً لمدينة المناهج لبدء التوليد الذكي.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -4653,7 +5210,6 @@ export function Management({
             </SectionContainer>
           )}
         </main>
-      </motion.div>
       <ConfirmationModal
         isOpen={confirmConfig.isOpen}
         title={confirmConfig.title}

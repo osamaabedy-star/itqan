@@ -12,7 +12,7 @@ interface MonitoringMatrixProps {
   onClose: () => void;
   onSelectStudent?: (st: Student) => void;
   academicYear: string;
-  activeTerm: 'term1' | 'term2';
+  activeTerm: 'term1' | 'term2' | 'full';
   initialClassId?: string;
   initialSubjectId?: string;
 }

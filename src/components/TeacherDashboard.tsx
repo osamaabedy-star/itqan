@@ -35,7 +35,7 @@ interface TeacherDashboardProps {
   evaluations: Evaluations;
   academicYear: string;
   displayYear: string;
-  activeTerm: "term1" | "term2";
+  activeTerm: "term1" | "term2" | "full";
   externalProfile: ExternalProfile;
   onLogout: () => void;
   onToggleTerm: () => void;
@@ -145,7 +145,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             className="hidden md:flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-xl text-indigo-700 hover:bg-indigo-100 transition-colors"
           >
             <Calendar size={14} />
-            <span className="text-xs font-black">{activeTerm === 'term1' ? 'الفصل الدراسي الأول' : 'الفصل الدراسي الثاني'}</span>
+            <span className="text-xs font-black">{activeTerm === 'term1' ? 'الفصل الدراسي الأول' : activeTerm === 'term2' ? 'الفصل الدراسي الثاني' : 'العام الدراسي كامل'}</span>
           </button>
           <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-100 px-4 py-2 rounded-xl">
              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

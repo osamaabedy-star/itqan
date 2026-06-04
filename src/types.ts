@@ -45,6 +45,7 @@ export interface Skill {
   subjectName?: string; // Subject name (Math, etc.)
   subjectId?: string; // Keep for legacy/specific cases
   isArchived?: boolean;
+  term?: 'term1' | 'term2' | 'full';
 }
 
 export interface MCQQuestion {
@@ -69,7 +70,7 @@ export interface Quiz {
   questions: MCQQuestion[];
   isArchived?: boolean;
   status?: 'draft' | 'published';
-  term?: 'term1' | 'term2';
+  term?: 'term1' | 'term2' | 'full';
   updatedAt?: any;
   createdAt?: any;
 }
@@ -136,7 +137,7 @@ export interface Visit {
   quizId?: string;
   quizUrl?: string;
   rubricId?: string; // Reference to which rubric was used
-  term?: 'term1' | 'term2';
+  term?: 'term1' | 'term2' | 'full';
   isArchived?: boolean;
   evaluationData?: Record<string, number>; // Maps a criterion ID to a score
   signed?: boolean;
@@ -204,6 +205,25 @@ export interface SupportPlan {
   createdAt: string;
 }
 
+export interface StudentBookChapter {
+  id: string;
+  title: string;
+  content: string;
+  pages?: string;
+}
+
+export interface StudentBook {
+  id: string;
+  title: string;
+  gradeId: string;
+  subjectName: string;
+  term: 'term1' | 'term2' | 'full';
+  chapters: StudentBookChapter[];
+  isArchived?: boolean;
+  updatedAt?: string;
+  createdBy?: string;
+}
+
 export interface AppData {
   teachers: Teacher[];
   grades: Grade[];
@@ -219,4 +239,5 @@ export interface AppData {
   quizSignatures?: QuizSignature[];
   settings?: any[];
   supportPlans?: SupportPlan[];
+  studentBooks?: StudentBook[];
 }

@@ -140,6 +140,15 @@ service cloud.firestore {
              data.selectedItems is list;
     }
 
+    function isValidStudentBook(data) {
+      return data.keys().hasAll(['id', 'title', 'gradeId', 'subjectName', 'term']) &&
+             data.id is string &&
+             data.title is string && data.title.size() <= 500 &&
+             data.gradeId is string &&
+             data.subjectName is string &&
+             data.term in ['term1', 'term2', 'full'];
+    }
+
     // --- Collection Routes ---
 
     match /externalProfiles/{profileId} {
@@ -194,13 +203,13 @@ service cloud.firestore {
 
     match /quizResults/{resultId} {
       allow read: if true;
-      allow create, update: if (isSignedIn() && isValidQuizResult(incoming())) || (!isSignedIn() && isValidQuizResult(incoming()));
+      allow create, update: if isSignedIn() && isValidQuizResult(incoming());
       allow delete: if isAdmin();
     }
 
     match /evaluations/{evaluationId} {
       allow read: if true;
-      allow create, update: if (isSignedIn() && isValidEvaluation(incoming())) || (!isSignedIn() && isValidEvaluation(incoming()));
+      allow create, update: if isSignedIn() && isValidEvaluation(incoming());
       allow delete: if isAdmin();
     }
 
@@ -212,13 +221,13 @@ service cloud.firestore {
 
     match /visits/{visitId} {
       allow read: if true;
-      allow create, update: if (isSignedIn() && isValidVisit(incoming())) || (!isSignedIn() && isValidVisit(incoming()));
+      allow create, update: if isSignedIn() && isValidVisit(incoming());
       allow delete: if isAdmin();
     }
 
     match /quizSignatures/{signatureId} {
       allow read: if true;
-      allow create, update: if (isSignedIn() && isValidQuizSignature(incoming())) || (!isSignedIn() && isValidQuizSignature(incoming()));
+      allow create, update: if isSignedIn() && isValidQuizSignature(incoming());
       allow delete: if isAdmin();
     }
 
@@ -229,7 +238,13 @@ service cloud.firestore {
 
     match /supportPlans/{supportPlanId} {
       allow read: if true;
-      allow create, update: if (isSignedIn() && isValidSupportPlan(incoming())) || (!isSignedIn() && isValidSupportPlan(incoming()));
+      allow create, update: if isSignedIn() && isValidSupportPlan(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /studentBooks/{bookId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidStudentBook(incoming());
       allow delete: if isAdmin();
     }
   }

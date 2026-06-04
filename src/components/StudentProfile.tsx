@@ -49,7 +49,7 @@ interface StudentProfileProps {
   onBack?: () => void;
   onStartQuiz: (quiz: Quiz) => void;
   academicYear: string;
-  activeTerm: 'term1' | 'term2';
+  activeTerm: 'term1' | 'term2' | 'full';
 }
 
 export function StudentProfile({ student, data, evaluations, onClose, onBack, onStartQuiz, academicYear, activeTerm }: StudentProfileProps) {
@@ -57,7 +57,7 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
   const [evaluatingSkill, setEvaluatingSkill] = useState<Skill | null>(null);
   const [selectedSkillDetails, setSelectedSkillDetails] = useState<Skill | null>(null);
 
-  const activeQuizzes = data.quizzes.filter(q => !q.isArchived && (q.term || 'term1') === activeTerm);
+  const activeQuizzes = data.quizzes.filter(q => !q.isArchived && (activeTerm === 'full' || (q.term || 'term1') === activeTerm));
   const activeQuizIds = new Set(activeQuizzes.map(q => q.id));
   
   const quizResults = data.quizResults?.filter(r => 
@@ -78,11 +78,19 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
       }
     });
   const studentSubjects = Array.from(subjectMap.values());
+
+  const getFilteredSkills = (subjName: string, gradeId?: string) => {
+    return data.skills.filter(sk => 
+      sk.subjectName === subjName && 
+      (!gradeId || sk.gradeId === gradeId) && 
+      !sk.isArchived
+    ).filter(sk => activeTerm === 'full' || !sk.term || sk.term === 'full' || sk.term === activeTerm);
+  };
   
   const calculateSubjectProgress = (subjectId: string) => {
     const subj = data.subjects.find(s => s.id === subjectId);
     if (!subj) return 0;
-    const subjectSkills = data.skills.filter(sk => sk.subjectName === subj.name && sk.gradeId === subj.gradeId && !sk.isArchived);
+    const subjectSkills = getFilteredSkills(subj.name, subj.gradeId);
     if (subjectSkills.length === 0) return 0;
     const mastered = subjectSkills.filter(sk => {
       const ev = evaluations[`${student.id}-${sk.id}-${academicYear}`];
@@ -323,7 +331,7 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
                              </div>
                              <div className="h-56 w-full bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
                                <ResponsiveContainer width="100%" height="100%">
-                                 <BarChart data={data.skills.filter(sk => sk.subjectName === subject.name && sk.gradeId === subject.gradeId && !sk.isArchived).map(sk => {
+                                 <BarChart data={getFilteredSkills(subject.name, subject.gradeId).map(sk => {
                                    const ev = evaluations[`${student.id}-${sk.id}-${academicYear}`];
                                    const scoreMap: Record<string, number> = { 'mastered': 100, 'advanced': 80, 'accepted': 60, 'weak': 40, 'very-weak': 20 };
                                    const scoreLabels: Record<string, string> = { 'mastered': 'متقن', 'advanced': 'متقدم', 'accepted': 'مقبول', 'weak': 'ضعيف', 'very-weak': 'ضعيف جدا' };
@@ -354,8 +362,8 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
                                      }} 
                                    />
                                    <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={40}>
-                                      {data.skills.filter(sk => sk.subjectName === subject.name && sk.gradeId === subject.gradeId && !sk.isArchived).map((entry, index) => {
-                                         const sk = data.skills.filter(sk => sk.subjectName === subject.name && sk.gradeId === subject.gradeId && !sk.isArchived)[index];
+                                      {getFilteredSkills(subject.name, subject.gradeId).map((entry, index) => {
+                                         const sk = getFilteredSkills(subject.name, subject.gradeId)[index];
                                          const ev = evaluations[`${student.id}-${sk.id}-${academicYear}`];
                                          const score = ev?.score;
                                          return <Cell key={`cell-${index}`} fill={score === 'mastered' ? '#10b981' : score === 'advanced' ? '#0ea5e9' : score === 'accepted' ? '#f59e0b' : score === 'weak' || score === 'very-weak' ? '#ef4444' : '#e2e8f0'} />;
@@ -365,9 +373,9 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
                                </ResponsiveContainer>
                              </div>
                            </div>
-
+ 
                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                              {data.skills.filter(sk => sk.subjectName === subject.name && sk.gradeId === subject.gradeId && !sk.isArchived).map(skill => {
+                              {getFilteredSkills(subject.name, subject.gradeId).map(skill => {
                                 const evaluation = evaluations[`${student.id}-${skill.id}-${academicYear}`];
                                 return (
                                   <div 

@@ -263,7 +263,7 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
                                {quiz.imageUrl ? (
                                   <img src={quiz.imageUrl} alt="" className="w-full h-full object-cover opacity-10 group-hover:opacity-20 group-hover:scale-105 transition-all duration-700" referrerPolicy="no-referrer" />
                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-purple-55" />
+                                  <div className="w-full h-full bg-slate-50" />
                                )}
                                <div className="absolute inset-0 bg-gradient-to-t from-white via-white/80 to-transparent" />
                             </div>

@@ -148,7 +148,7 @@ ${text}
 
   app.post("/api/gemini/generate-questions", async (req, res) => {
     try {
-      const { prompt, count, subject, grade } = req.body;
+      const { prompt, count, subject, grade, chapters } = req.body;
       if (!prompt) {
         return res.status(400).json({ error: "الرجاء كتابة تفاصيل الأسئلة المطلوبة" });
       }
@@ -181,15 +181,45 @@ ${text}
 5. لا تضف أي نصوص مقدمة أو مؤخرة، فقط أرجع مصفوفة JSON تحتوي على الأسئلة متوافقة تماماً مع الـ Schema المحددة.
 `;
 
-      const promptRequest = `قم بتوليد أسئلة اختبار بناءً على المعايير التالية:
-- الطلب أو موضوع الأسئلة: ${prompt}
-- عدد الأسئلة المطلوب: ${count || 5}
-- المادة الدراسية: ${subject || "غير محددة"}
-- الصف الدراسي: ${grade || "غير محدد"}`;
+      const contents: any[] = [];
+      let promptRequestText = `قم بتوليد أسئلة اختبار بناءً على المعايير التالية:\n`;
+      promptRequestText += `- عدد الأسئلة المطلوب: ${count || 5}\n`;
+      promptRequestText += `- المادة الدراسية: ${subject || "غير محددة"}\n`;
+      promptRequestText += `- الصف الدراسي: ${grade || "غير محدد"}\n\n`;
+
+      if (chapters && Array.isArray(chapters) && chapters.length > 0) {
+        promptRequestText += `أنت بصدد توليد أسئلة اختبار دقيقة ومطابقة بنسبة 100% للنصوص والمناهج المرجعية المرفقة أدناه لمادة {${subject || "المواد"}}:\n\n`;
+        contents.push(promptRequestText);
+
+        for (const chap of chapters) {
+          if (chap.content && typeof chap.content === "string" && chap.content.startsWith("data:application/pdf;base64,")) {
+            const base64Data = chap.content.split(",")[1];
+            contents.push({ text: `محتوى الدرس والملخص المرجعي لكل من درس: ${chap.title}${chap.pages ? ` (المأخوذ من الصفحات: ${chap.pages})` : ""}:` });
+            contents.push({
+              inlineData: {
+                mimeType: "application/pdf",
+                data: base64Data
+              }
+            });
+          } else {
+            contents.push({ text: `عنوان الدرس/البند: ${chap.title}${chap.pages ? ` (الصفحات المستهدفة: ${chap.pages})` : ""}\nالمحتوى المرجعي والشرح:\n${chap.content}` });
+          }
+        }
+
+        contents.push({ text: `يرجى صياغة أسئلة اختبار ذكية وبنفس مفردات ومصطلحات المراجع والمناهج المرفقة أعلاه تقيس فهم وتحصيل الطلاب بنظام الأسئلة المتعددة MCQ وبدقة تامة.` });
+      } else {
+        // Clean prompt from raw base64 if it accidentally leaked to string
+        let cleanedPrompt = prompt;
+        if (typeof prompt === "string" && prompt.includes("data:application/pdf;base64,")) {
+          cleanedPrompt = prompt.replace(/data:application\/pdf;base64,[A-Za-z0-9+/=\s\r\n]+/g, "[ملف PDF مدمج]");
+        }
+        promptRequestText += `- الطلب أو موضوع الأسئلة: ${cleanedPrompt}\n`;
+        contents.push(promptRequestText);
+      }
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: promptRequest,
+        contents: { parts: contents.map(item => typeof item === "string" ? { text: item } : item) },
         config: {
           systemInstruction,
           responseMimeType: "application/json",
@@ -226,6 +256,77 @@ ${text}
     } catch (error: any) {
       console.error("Generate Questions API Error:", error);
       res.status(500).json({ error: error?.message || "فشل توليد الأسئلة. يرجى المحاولة لاحقاً." });
+    }
+  });
+
+  app.post("/api/gemini/generate-chapter-content", async (req, res) => {
+    try {
+      const { chapterTitle, subject, grade, pdfData } = req.body;
+      if (!chapterTitle) {
+        return res.status(400).json({ error: "الرجاء كتابة اسم أو عنوان الفصل/الدرس" });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          error: "مفتاح الذكاء الاصطناعي (GEMINI_API_KEY) غير مهيأ. يرجى تهيئته في الإعدادات أولاً."
+        });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      const systemInstruction = `
+أنت خبير مناهج تعليمية ومؤلف كتب مدرسية متميز باللغة العربية.
+مهمتك هي كتابة محتوى درس تعليمي متميز وشامل ودقيق علمياً ولغوياً يناسب الطلاب في الصف الدراسي المعني.
+اكتب شرحاً وافياً ومثرياً ومقسماً إلى نقاط وعناوين فرعية واضحة، ولا تضف مقدمات أو استخلاصات خارج نطاق الدرس نفسه.
+`;
+
+      const contents: any[] = [];
+      let promptRequest = "";
+
+      if (pdfData && typeof pdfData === "string" && pdfData.startsWith("data:application/pdf;base64,")) {
+        const base64Data = pdfData.split(",")[1];
+        contents.push({
+          inlineData: {
+            mimeType: "application/pdf",
+            data: base64Data
+          }
+        });
+        promptRequest = `قم بقراءة وتحليل ملف المنهج المرفق PDF وكتابة تلخيص وشرح وافٍ وتفصيلي ومنظم في نقاط وعناوين لمحتوى هذا الدرس:
+- عنوان الدرس: ${chapterTitle}
+- المادة الدراسية: ${subject || "غير محددة"}
+- الصف الدراسي: ${grade || "غير محدد"}
+
+تأكد من استخراج وتوضيح كافة المفاهيم والمعلومات والأمثلة الهامة الواردة بدقة ممتازة باللغة العربية ليكون مرجعاً ممتازاً لإنتاج أسئلة الاختبارات واكتساب المعرفة.`;
+      } else {
+        promptRequest = `قم بتأليف محتوى درس كامل ومتميز ومنظم لعنوان الفصل/الدرس التالي:
+- عنوان الدرس: ${chapterTitle}
+- المادة الدراسية: ${subject || "غير محددة"}
+- الصف الدراسي: ${grade || "غير محدد"}`;
+      }
+
+      contents.push({ text: promptRequest });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: { parts: contents },
+        config: {
+          systemInstruction,
+        }
+      });
+
+      const generatedContent = response.text || "";
+      res.json({ success: true, content: generatedContent });
+    } catch (error: any) {
+      console.error("Generate Chapter Content API Error:", error);
+      res.status(500).json({ error: error?.message || "فشلت كتابة محتوى الدرس بالذكاء الاصطناعي." });
     }
   });
 

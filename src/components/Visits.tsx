@@ -20,7 +20,7 @@ interface VisitsProps {
   data: AppData;
   evaluations: Evaluations;
   academicYear: string;
-  activeTerm: "term1" | "term2";
+  activeTerm: "term1" | "term2" | "full";
   filterTeacherId?: string;
 }
 
@@ -764,7 +764,7 @@ export function Visits({
           const filteredVisits = (data.visits || []).filter(
             (v) => {
               if (v.isArchived) return false;
-              if ((v.term || "term1") !== activeTerm) return false;
+              if (activeTerm !== 'full' && (v.term || "term1") !== activeTerm) return false;
               
               const matchesType = visitTypeTab === "peer"
                 ? v.visitType === "peer"

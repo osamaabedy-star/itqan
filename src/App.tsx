@@ -16,6 +16,7 @@ import {
   Legend
 } from 'recharts';
 import { Navbar } from './components/Navbar';
+import { Breadcrumb } from './components/Breadcrumb';
 import { SchoolLogo } from './components/SchoolLogo';
 import { ClassCard } from './components/ClassCard';
 import { INITIAL_DATA } from './constants';
@@ -93,11 +94,16 @@ import { ConfirmationModal } from './components/ui/ConfirmationModal';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const isAdmin = user?.email === 'osamaabedy@gmail.com';
   const [view, setView] = useState(() => {
     try {
       const saved = localStorage.getItem('itqan-saved-state');
       if (saved) {
-        return JSON.parse(saved).view || 'dashboard';
+        const parsed = JSON.parse(saved);
+        if (parsed.view === 'quiz' || parsed.view === 'baseline-session' || parsed.view === 'quiz-login') {
+          return 'dashboard';
+        }
+        return parsed.view || 'dashboard';
       }
     } catch (e) {}
     return 'dashboard';
@@ -260,6 +266,12 @@ export default function App() {
     }
   }, [externalProfile]);
 
+  useEffect(() => {
+    if (view === 'management' && user && !isAdmin) {
+      setView('dashboard');
+    }
+  }, [view, user, isAdmin]);
+
   const [studentSession, setStudentSession] = useState<Student | null>(() => {
     try {
       const saved = localStorage.getItem('itqan-student-session');
@@ -370,21 +382,10 @@ export default function App() {
     selectedQuiz: Quiz | null;
   };
 
-  const [navHistory, setNavHistory] = useState<NavState[]>(() => {
-    try {
-      const saved = localStorage.getItem('itqan-nav-history');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  const prevNavStateRef = useRef<NavState | null>(null);
-  const isNavigatingBackRef = useRef(false);
+  const prevNavStateRef = useRef<any | null>(null);
 
   useEffect(() => {
-    const currentState: NavState = {
+    const currentState = {
       view,
       selectedClass,
       selectedSubject,
@@ -398,61 +399,60 @@ export default function App() {
       localStorage.setItem('itqan-saved-state', JSON.stringify(currentState));
     } catch (e) {}
 
-    if (!prevNavStateRef.current) {
-      prevNavStateRef.current = currentState;
-      return;
-    }
-
-    const prev = prevNavStateRef.current;
-    const hasChanged =
-      prev.view !== currentState.view ||
-      (prev.selectedClass?.id !== currentState.selectedClass?.id) ||
-      (prev.selectedSubject?.id !== currentState.selectedSubject?.id) ||
-      (prev.selectedSkill?.id !== currentState.selectedSkill?.id) ||
-      (prev.selectedStudent?.id !== currentState.selectedStudent?.id) ||
-      (prev.selectedTeacher?.id !== currentState.selectedTeacher?.id) ||
-      (prev.selectedQuiz?.id !== currentState.selectedQuiz?.id);
-
-    if (hasChanged) {
-      if (isNavigatingBackRef.current) {
-        prevNavStateRef.current = currentState;
-        isNavigatingBackRef.current = false;
-        return;
-      }
-
-      setNavHistory((prevHistory) => {
-        const updated = [...prevHistory, prev];
-        const sliced = updated.slice(-30);
-        try {
-          localStorage.setItem('itqan-nav-history', JSON.stringify(sliced));
-        } catch (e) {}
-        return sliced;
-      });
-      prevNavStateRef.current = currentState;
-    }
   }, [view, selectedClass, selectedSubject, selectedSkill, selectedStudent, selectedTeacher, selectedQuiz]);
 
   const handleGoBack = () => {
-    if (navHistory.length === 0) return;
+    switch (view) {
+      case 'subjects':
+        setView('dashboard');
+        setSelectedClass(null);
+        break;
+      case 'skills':
+        setView('subjects');
+        setSelectedSubject(null);
+        break;
+      case 'evaluation':
+        setView('skills');
+        setSelectedSkill(null);
+        break;
+      case 'student-profile':
+      case 'teacher-profile':
+      case 'management':
+      case 'reports':
+      case 'quick-matrix':
+      case 'baseline-selection':
+      case 'student-report':
+      case 'quiz-report':
+        setView('dashboard');
+        setSelectedStudent(null);
+        setSelectedTeacher(null);
+        setSelectedQuiz(null);
+        break;
+      case 'quiz':
+        setView('dashboard');
+        break;
+      default:
+        setView('dashboard');
+    }
+  };
 
-    const previousState = navHistory[navHistory.length - 1];
-    isNavigatingBackRef.current = true;
-
-    setView(previousState.view);
-    setSelectedClass(previousState.selectedClass);
-    setSelectedSubject(previousState.selectedSubject);
-    setSelectedSkill(previousState.selectedSkill);
-    setSelectedStudent(previousState.selectedStudent);
-    setSelectedTeacher(previousState.selectedTeacher);
-    setSelectedQuiz(previousState.selectedQuiz);
-
-    setNavHistory((prevHistory) => {
-      const updated = prevHistory.slice(0, -1);
-      try {
-        localStorage.setItem('itqan-nav-history', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
+  const handleNavigateToView = (newView: string, resetData?: boolean) => {
+    setView(newView);
+    if (resetData) {
+        if (newView === 'dashboard') {
+            setSelectedClass(null);
+            setSelectedSubject(null);
+            setSelectedSkill(null);
+            setSelectedStudent(null);
+            setSelectedTeacher(null);
+            setSelectedQuiz(null);
+        } else if (newView === 'subjects') {
+            setSelectedSubject(null);
+            setSelectedSkill(null);
+        } else if (newView === 'skills') {
+            setSelectedSkill(null);
+        }
+    }
   };
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'calm'>(() => {
@@ -529,6 +529,17 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (user && loginRole === 'admin') {
+      if (user.email === 'osamaabedy@gmail.com') {
+        setView('management');
+      } else {
+        setLoginError('عذراً، هذا الحساب غير مصرح له بالدخول كمسؤول.');
+        firestoreService.logout().catch(console.error);
+      }
+    }
+  }, [user, loginRole]);
+
   // Sync all data from Firestore
   useEffect(() => {
     // We allow subscription even if no user is signed in, as rules allow public read
@@ -549,6 +560,7 @@ export default function App() {
       firestoreService.subscribeToCollection('quizSignatures', (data) => setAppData(prev => ({ ...prev, quizSignatures: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('settings', (data) => setAppData(prev => ({ ...prev, settings: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('supportPlans', (data) => setAppData(prev => ({ ...prev, supportPlans: data.length > 0 ? data : [] }))),
+      firestoreService.subscribeToCollection('studentBooks', (data) => setAppData(prev => ({ ...prev, studentBooks: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToEvaluations((newEvals) => setEvaluations(newEvals))
     ];
 
@@ -577,7 +589,8 @@ export default function App() {
     const skills = appData.skills.filter(sk => 
       (sk.gradeId === subject.gradeId && sk.subjectName === subject.name) || 
       (sk.subjectId === subject.id)
-    ).filter(sk => !sk.isArchived);
+    ).filter(sk => !sk.isArchived)
+     .filter(sk => activeTerm === 'full' || !sk.term || sk.term === 'full' || sk.term === activeTerm);
     
     return skills;
   };
@@ -738,7 +751,7 @@ export default function App() {
   }
 
   // Check if we need to show the unified Login screen:
-  const isUserAdmin = !!(user && !user.isAnonymous);
+  const isUserAdmin = isAdmin;
   const isTeacherActive = !!(externalProfile && view === 'external-portal');
   const isStudentActive = !!(studentSession && (view === 'student-portal' || view === 'quiz'));
 
@@ -973,7 +986,7 @@ export default function App() {
   return (
       <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-800 overflow-hidden print:h-auto print:bg-white print:overflow-visible print:block" dir="rtl">
         {isOuterNavbarVisible && (
-          <div className="print:hidden">
+          <div className="print:hidden flex flex-col">
             <Navbar 
               activeView={view} 
               onNavigate={setView} 
@@ -987,8 +1000,18 @@ export default function App() {
               theme={theme}
               onThemeChange={setTheme}
               onGoBack={handleGoBack}
-              canGoBack={navHistory.length > 0}
+              canGoBack={view !== 'dashboard' && view !== 'login' && view !== 'student-portal' && view !== 'external-portal'}
               schoolLogoUrl={appData.settings?.[0]?.schoolLogoUrl}
+            />
+            <Breadcrumb 
+              view={view}
+              selectedClass={selectedClass}
+              selectedSubject={selectedSubject}
+              selectedSkill={selectedSkill}
+              selectedStudent={selectedStudent}
+              selectedTeacher={selectedTeacher}
+              selectedQuiz={selectedQuiz}
+              onNavigate={handleNavigateToView}
             />
           </div>
         )}
@@ -1009,6 +1032,7 @@ export default function App() {
               calculatePerformance={calculatePerformance}
               filterTeacherId={globalFilterTeacherId}
               onFilterTeacherChange={setGlobalFilterTeacherId}
+              isAdmin={isAdmin}
             />
           )}
 
@@ -1495,7 +1519,7 @@ export default function App() {
             </div>
           )}
 
-          {view === 'management' && (
+          {view === 'management' && isAdmin && (
             <Management 
               data={appData} 
               evaluations={evaluations} 
@@ -1592,12 +1616,7 @@ export default function App() {
               academicYear={academicYear}
               activeTerm={activeTerm}
               onClose={() => {
-                if (navHistory.length > 0) {
-                  handleGoBack();
-                } else {
-                  setView('dashboard');
-                  setSelectedStudent(null);
-                }
+                handleGoBack();
               }}
               onBack={() => handleGoBack()}
               onStartQuiz={(q) => { setSelectedQuiz(q); setView('quiz'); }}

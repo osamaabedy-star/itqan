@@ -243,6 +243,33 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "studentId", "studentName", "teacherId", "teacherName", "selectedItems", "createdAt"]
+    },
+    "StudentBook": {
+      "title": "StudentBook",
+      "description": "Student book or educational grounding context",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "gradeId": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "term": { "type": "string", "enum": ["term1", "term2", "full"] },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "content": { "type": "string" }
+            }
+          }
+        },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "gradeId", "subjectName", "term"]
     }
   },
   "firestore": {
@@ -301,6 +328,10 @@
     "/supportPlans/{supportPlanId}": {
       "schema": "SupportPlan",
       "description": "Support plans for students needing assistance"
+    },
+    "/studentBooks/{bookId}": {
+      "schema": "StudentBook",
+      "description": "Grounding student textbook chapters and lessons"
     }
   }
 }
