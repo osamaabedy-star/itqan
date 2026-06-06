@@ -29,6 +29,7 @@ import { AppData, Evaluations, ExternalProfile, Class, Subject, Student, Skill, 
 import { ClassDetailView } from './ClassDetailView';
 import { ProfessionalReports } from './ProfessionalReports';
 import { Visits } from './Visits';
+import { MissingEvaluationsCard } from './MissingEvaluationsCard';
 
 interface TeacherDashboardProps {
   data: AppData;
@@ -236,7 +237,21 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Classes & Subjects */}
-                  <div className="lg:col-span-2 space-y-5">
+                  <div className="lg:col-span-2 space-y-6">
+                    <MissingEvaluationsCard 
+                      data={data} 
+                      evaluations={evaluations} 
+                      academicYear={academicYear} 
+                      filterTeacherId={teacherId}
+                      onStudentClick={(studentId) => {
+                        const s = data.students.find(st => st.id === studentId);
+                        if (s) {
+                          setSelectedClassId(s.classId);
+                          // Scroll to the top or to the class detail view
+                          window.scrollTo(0, 0);
+                        }
+                      }}
+                    />
                     <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-5">
                       <div className="flex items-center justify-between">
                          <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">

@@ -43,6 +43,7 @@ import {
   Teacher,
 } from "../types";
 import { ClassCard } from "./ClassCard";
+import { MissingEvaluationsCard } from "./MissingEvaluationsCard";
 
 interface DashboardProps {
   data: AppData;
@@ -338,7 +339,18 @@ export function Dashboard({
               )}
             </div>
 
-
+            <div className="mt-8">
+              <MissingEvaluationsCard 
+                data={data}
+                evaluations={evaluations}
+                academicYear={academicYear}
+                filterTeacherId={filterTeacherId}
+                onStudentClick={(studentId) => {
+                  const s = data.students.find(st => st.id === studentId);
+                  if (s) onSelectStudent(s);
+                }}
+              />
+            </div>
           </div>
         ) : !selectedGradeId ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

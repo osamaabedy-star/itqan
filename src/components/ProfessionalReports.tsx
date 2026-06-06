@@ -31,7 +31,8 @@ import {
   X,
   User,
   Layers,
-  Image
+  Image,
+  AlertTriangle
 } from 'lucide-react';
 import { AppData, Class, Quiz, QuizResult, Student, Grade, Evaluations } from '../types';
 import { SchoolLogo } from './SchoolLogo';
@@ -84,7 +85,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
   const [quizFilterQuizId, setQuizFilterQuizId] = useState<string>('');
   const [quizFilterTerm, setQuizFilterTerm] = useState<string>('all');
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
-  const [studentSortBy, setStudentSortBy] = useState<'alphabetical' | 'class' | 'progress' | 'progress-asc' | 'support'>('alphabetical');
+  const [studentSortBy, setStudentSortBy] = useState<'alphabetical' | 'class' | 'progress' | 'progress-asc' | 'support' | 'support-urgent'>('alphabetical');
   const [selectedReportStudentId, setSelectedReportStudentId] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedQuizToManage, setSelectedQuizToManage] = useState<Quiz | null>(null);
@@ -109,6 +110,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
   const reportRef = useRef<HTMLDivElement>(null);
   const quizCardRef = useRef<HTMLDivElement>(null);
   const [isExportingImage, setIsExportingImage] = useState(false);
+  const [selectedSkillForDetails, setSelectedSkillForDetails] = useState<any>(null);
 
   const teacherSubjects = data.subjects.filter(s => !s.isArchived && (!filterTeacherId || s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId)));
   const teacherSubjectIds = teacherSubjects.map(s => s.id);
@@ -189,7 +191,8 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
         .map(([key, val]) => val);
       
       const weakCount = evs.filter(e => e.score === 'weak' || e.score === 'very-weak').length;
-      return { avg, weakCount };
+      const veryWeakCount = evs.filter(e => e.score === 'very-weak').length;
+      return { avg, weakCount, veryWeakCount };
     };
 
     if (studentSortBy === 'class') {
@@ -200,7 +203,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
         return a.name.localeCompare(b.name, 'ar');
       });
     } else if (studentSortBy === 'progress') {
-      const statsMap = new Map<string, { avg: number; weakCount: number }>();
+      const statsMap = new Map<string, { avg: number; weakCount: number; veryWeakCount: number }>();
       list.forEach(s => statsMap.set(s.id, studentStats(s.id)));
       return [...list].sort((a, b) => {
         const statsA = statsMap.get(a.id)!;
@@ -209,7 +212,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
         return a.name.localeCompare(b.name, 'ar');
       });
     } else if (studentSortBy === 'progress-asc') {
-      const statsMap = new Map<string, { avg: number; weakCount: number }>();
+      const statsMap = new Map<string, { avg: number; weakCount: number; veryWeakCount: number }>();
       list.forEach(s => statsMap.set(s.id, studentStats(s.id)));
       return [...list].sort((a, b) => {
         const statsA = statsMap.get(a.id)!;
@@ -217,12 +220,15 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
         if (statsA.avg !== statsB.avg) return statsA.avg - statsB.avg;
         return a.name.localeCompare(b.name, 'ar');
       });
-    } else if (studentSortBy === 'support') {
-      const statsMap = new Map<string, { avg: number; weakCount: number }>();
+    } else if (studentSortBy === 'support' || studentSortBy === 'support-urgent') {
+      const statsMap = new Map<string, { avg: number; weakCount: number; veryWeakCount: number }>();
       list.forEach(s => statsMap.set(s.id, studentStats(s.id)));
       return [...list].sort((a, b) => {
         const statsA = statsMap.get(a.id)!;
         const statsB = statsMap.get(b.id)!;
+        if (statsB.veryWeakCount !== statsA.veryWeakCount) {
+          return statsB.veryWeakCount - statsA.veryWeakCount;
+        }
         if (statsB.weakCount !== statsA.weakCount) {
           return statsB.weakCount - statsA.weakCount;
         }
@@ -457,8 +463,11 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
         const isDirect = teacherDirectClassIds.includes(cls.id) || cls.teacherIds?.includes(filterTeacherId);
         const isSkillMatch = data.skills.some(sk => {
            if (sk.gradeId !== cls.gradeId) return false;
-           const sub = data.subjects.find(s => s.id === sk.subjectId || s.name === sk.subjectName);
-           return sub && (sub.teacherId === filterTeacherId || sub.teacherIds?.includes(filterTeacherId));
+           const isTeacherSubject = data.subjects.some(s => 
+             (s.id === sk.subjectId || s.name === sk.subjectName) && 
+             (s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId))
+           );
+           return isTeacherSubject;
         });
         if (!isDirect && !isSkillMatch) return false;
       }
@@ -468,7 +477,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
     let mastered = 0, advanced = 0, accepted = 0, weak = 0, veryWeak = 0;
     const nonAchieverIds = new Set<string>();
     
-    const skillStats: Record<string, { mastered: number, advanced: number, accepted: number, weak: number, veryWeak: number, total: number, subjectName: string }> = {};
+    const skillStats: Record<string, { mastered: number, advanced: number, accepted: number, weak: number, veryWeak: number, total: number, subjectName: string, outstandingStudentIds: Set<string>, needingCareStudentIds: Set<string> }> = {};
 
     data.skills.forEach(skill => {
       if (skill.isArchived) return;
@@ -481,12 +490,14 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
       }
       
       if (filterTeacherId) {
-        const sub = data.subjects.find(s => s.id === skill.subjectId || s.name === skill.subjectName);
-        const isTeacherSkill = sub && (sub.teacherId === filterTeacherId || sub.teacherIds?.includes(filterTeacherId));
+        const isTeacherSkill = data.subjects.some(s => 
+          (s.id === skill.subjectId || s.name === skill.subjectName) && 
+          (s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId))
+        );
         if (!isTeacherSkill) return;
       }
       
-      skillStats[skill.id] = { mastered: 0, advanced: 0, accepted: 0, weak: 0, veryWeak: 0, total: 0, subjectName: skill.subjectName || 'عام' };
+      skillStats[skill.id] = { mastered: 0, advanced: 0, accepted: 0, weak: 0, veryWeak: 0, total: 0, subjectName: skill.subjectName || 'عام', outstandingStudentIds: new Set(), needingCareStudentIds: new Set() };
     });
 
     Object.entries(evaluations).forEach(([key, ev]) => {
@@ -513,8 +524,10 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
       if (student && skill) {
           // If teacher filter is active, only include teacher's skills
           if (filterTeacherId) {
-            const sub = data.subjects.find(s => s.id === skill.subjectId || s.name === skill.subjectName);
-            const isTeacherSkill = sub && (sub.teacherId === filterTeacherId || sub.teacherIds?.includes(filterTeacherId));
+            const isTeacherSkill = data.subjects.some(s => 
+              (s.id === skill.subjectId || s.name === skill.subjectName) && 
+              (s.teacherId === filterTeacherId || s.teacherIds?.includes(filterTeacherId))
+            );
             if (!isTeacherSkill) return;
           }
 
@@ -525,14 +538,14 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
           else if (ev.score === 'very-weak') { veryWeak++; nonAchieverIds.add(studentId); }
 
           if (!skillStats[skill.id]) {
-            skillStats[skill.id] = { mastered: 0, advanced: 0, accepted: 0, weak: 0, veryWeak: 0, total: 0, subjectName: skill.subjectName || 'عام' };
+            skillStats[skill.id] = { mastered: 0, advanced: 0, accepted: 0, weak: 0, veryWeak: 0, total: 0, subjectName: skill.subjectName || 'عام', outstandingStudentIds: new Set<string>(), needingCareStudentIds: new Set<string>() };
           }
           skillStats[skill.id].total++;
-          if (ev.score === 'mastered') skillStats[skill.id].mastered++;
-          else if (ev.score === 'advanced') skillStats[skill.id].advanced++;
+          if (ev.score === 'mastered') { skillStats[skill.id].mastered++; skillStats[skill.id].outstandingStudentIds.add(studentId); }
+          else if (ev.score === 'advanced') { skillStats[skill.id].advanced++; skillStats[skill.id].outstandingStudentIds.add(studentId); }
           else if (ev.score === 'accepted') skillStats[skill.id].accepted++;
-          else if (ev.score === 'weak') skillStats[skill.id].weak++;
-          else if (ev.score === 'very-weak') skillStats[skill.id].veryWeak++;
+          else if (ev.score === 'weak') { skillStats[skill.id].weak++; skillStats[skill.id].needingCareStudentIds.add(studentId); }
+          else if (ev.score === 'very-weak') { skillStats[skill.id].veryWeak++; skillStats[skill.id].needingCareStudentIds.add(studentId); }
       }
     });
 
@@ -563,6 +576,8 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
         masteryRate,
         weakRate,
         total: stats.total,
+        outstandingStudentIds: Array.from(stats.outstandingStudentIds),
+        needingCareStudentIds: Array.from(stats.needingCareStudentIds),
         ...stats
       };
     }).sort((a, b) => b.total - a.total); // Sort by most evaluated by default
@@ -1840,7 +1855,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                                              </span>
                                                           </td>
                                                           <td className="py-4 px-5 text-slate-400 text-[10px] font-mono">
-                                                             {ev.val.updatedAt ? new Date(ev.val.updatedAt?.seconds * 1000).toLocaleDateString('ar-SA') : ''}
+                                                             {ev.val.updatedAt ? (ev.val.updatedAt.toDate ? ev.val.updatedAt.toDate() : (ev.val.updatedAt.seconds ? new Date(ev.val.updatedAt.seconds * 1000) : new Date(ev.val.updatedAt))).toLocaleDateString('ar-SA') : ''}
                                                           </td>
                                                           <td className="py-4 px-5 text-slate-500 font-bold max-w-xs truncate italic font-sans">
                                                              {ev.val.note || '--'}
@@ -1899,7 +1914,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                                           </td>
                                                           <td className="py-4 px-5 text-slate-500 font-sans">{cls?.name || 'غير محدد'}</td>
                                                           <td className="py-4 px-5 text-slate-400 text-[10px] font-mono text-left">
-                                                             {res.updatedAt ? new Date(res.updatedAt?.seconds * 1000).toLocaleString('ar-SA') : ''}
+                                                             {res.updatedAt ? (res.updatedAt.toDate ? res.updatedAt.toDate() : (res.updatedAt.seconds ? new Date(res.updatedAt.seconds * 1000) : new Date(res.updatedAt))).toLocaleString('ar-SA') : ''}
                                                           </td>
                                                        </tr>
                                                     );
@@ -2086,7 +2101,8 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                      initial={{ opacity: 0, y: 10 }}
                                      animate={{ opacity: 1, y: 0 }}
                                      key={sk.id} 
-                                     className="bg-white border text-right border-slate-100 rounded-3xl p-6 shadow-minimal hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col gap-5 relative overflow-hidden group"
+                                     onClick={() => setSelectedSkillForDetails(sk)}
+                                     className="bg-white border text-right border-slate-100 rounded-3xl p-6 shadow-minimal hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col gap-5 relative overflow-hidden group cursor-pointer"
                                   >
                                      {/* Subject Tag */}
                                      <div className="absolute top-0 right-0 px-4 py-1.5 bg-slate-50 border-b border-l border-slate-100 rounded-bl-2xl text-[10px] font-black text-slate-500 z-10 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
@@ -2261,7 +2277,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                          if (studentSortBy === 'progress-asc') {
                             return a.comprehensiveAvg - b.comprehensiveAvg;
                          }
-                         if (studentSortBy === 'support') {
+                         if (studentSortBy === 'support' || studentSortBy === 'support-urgent') {
                             const aVal = a.comprehensiveAvg < 60 && a.comprehensiveAvg > 0 ? 1 : 0;
                             const bVal = b.comprehensiveAvg < 60 && b.comprehensiveAvg > 0 ? 1 : 0;
                             if (aVal !== bVal) return bVal - aVal;
@@ -2317,7 +2333,8 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                            <option value="class">حسب الفصل</option>
                                            <option value="progress">المعدل الشامل (الأعلى)</option>
                                            <option value="progress-asc">المعدل الشامل (الأدنى)</option>
-                                           <option value="support">يحتاج لدعم وتدخل أولاً</option>
+                                           <option value="support">يحتاج للرعاية (تقييم ضعيف)</option>
+                                           <option value="support-urgent">الأولى بالرعاية (عاجل - غير مجتاز)</option>
                                         </select>
                                         <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-indigo-600 transition-colors" />
                                      </div>
@@ -2824,6 +2841,166 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                     </>
                   );
               })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Skill Details Modal */}
+      <AnimatePresence>
+        {selectedSkillForDetails && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm font-sans"
+            dir="rtl"
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+            >
+              <div className="p-6 md:p-8 bg-slate-50 border-b border-slate-100 flex items-start flex-col gap-2 relative">
+                <button 
+                  onClick={() => setSelectedSkillForDetails(null)}
+                  className="absolute top-6 left-6 w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-500 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors shadow-sm"
+                >
+                  <X size={20} />
+                </button>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-full">{selectedSkillForDetails.subjectName || 'عام'}</span>
+                  <span className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-black rounded-full">{selectedSkillForDetails.gradeName}</span>
+                </div>
+                <h3 className="text-xl md:text-2xl font-black text-slate-800 leading-tight pl-12">{selectedSkillForDetails.name}</h3>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 w-full gap-4 mt-6">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-minimal flex flex-col items-center justify-center text-center">
+                    <span className="text-[10px] font-bold text-slate-400 mb-1">إجمالي التقييمات</span>
+                    <span className="text-2xl font-black text-slate-700">{selectedSkillForDetails.total}</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-minimal flex flex-col items-center justify-center text-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-1 h-full bg-emerald-500" />
+                    <span className="text-[10px] font-bold text-emerald-600 mb-1">نسبة الإتقان </span>
+                    <span className="text-2xl font-black text-emerald-700">{selectedSkillForDetails.masteryRate}%</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-rose-100 shadow-minimal flex flex-col items-center justify-center text-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-1 h-full bg-rose-500" />
+                    <span className="text-[10px] font-bold text-rose-600 mb-1">نسبة التعثر</span>
+                    <span className="text-2xl font-black text-rose-700">{selectedSkillForDetails.weakRate}%</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-minimal flex flex-col items-center justify-center text-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-1 h-full bg-amber-500" />
+                    <span className="text-[10px] font-bold text-amber-600 mb-1">المقبول</span>
+                    <span className="text-2xl font-black text-amber-700">{selectedSkillForDetails.accepted}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-white">
+                {(() => {
+                   const evaluatedStudents = data.students.filter(student => !student.isArchived)
+                     .map(student => {
+                        const score = evaluations[`${student.id}-${selectedSkillForDetails.id}-${academicYear}`]?.score;
+                        return { student, score };
+                     })
+                     .filter(item => item.score); // Only those who have been evaluated for this skill
+
+                   const outstanding = evaluatedStudents.filter(s => s.score === 'mastered' || s.score === 'advanced');
+                   // Sort those needing care: very-weak FIRST (most urgent), then weak
+                   const needingCare = evaluatedStudents.filter(s => s.score === 'very-weak' || s.score === 'weak')
+                     .sort((a, b) => {
+                        if (a.score === 'very-weak' && b.score !== 'very-weak') return -1;
+                        if (b.score === 'very-weak' && a.score !== 'very-weak') return 1;
+                        return 0;
+                     });
+
+                   if (evaluatedStudents.length === 0) {
+                      return <div className="text-center text-slate-400 py-12 font-bold text-sm">لم يتم تقييم أي طالب لهذه المهارة بعد.</div>;
+                   }
+
+                   return (
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       {/* Table format for Students Needing Care */}
+                       <div className="space-y-4">
+                         <div className="flex items-center gap-2 pb-2 border-b border-rose-100">
+                           <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600">
+                             <AlertTriangle size={16} />
+                           </div>
+                           <h4 className="font-black text-slate-800">الأولى بالرعاية (عاجل)</h4>
+                           <span className="mr-auto font-black text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full text-xs">{needingCare.length}</span>
+                         </div>
+                         {needingCare.length > 0 ? (
+                           <div className="space-y-3">
+                             {needingCare.map(({ student, score }) => {
+                               const cls = data.classes.find(c => c.id === student.classId);
+                               const isUrgent = score === 'very-weak';
+                               return (
+                                 <div key={student.id} className={`p-4 rounded-2xl border ${isUrgent ? 'bg-rose-50 border-rose-200' : 'bg-orange-50 border-orange-200'} flex items-center justify-between`}>
+                                   <div className="flex items-center gap-3">
+                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${isUrgent ? 'bg-rose-200 text-rose-700' : 'bg-orange-200 text-orange-700'}`}>
+                                        {student.name.substring(0, 1)}
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-slate-800 text-xs md:text-sm line-clamp-1">{student.name}</p>
+                                        <p className="font-bold text-[10px] text-slate-500">{cls?.name || 'بدون فصل'}</p>
+                                      </div>
+                                   </div>
+                                   <span className={`px-3 py-1 rounded-full text-[10px] font-black whitespace-nowrap ${isUrgent ? 'bg-rose-600 text-white shadow-sm shadow-rose-200' : 'bg-orange-100 text-orange-700'}`}>
+                                      {score === 'very-weak' ? 'غير مجتاز عاجل' : 'ضعيف'}
+                                   </span>
+                                 </div>
+                               );
+                             })}
+                           </div>
+                         ) : (
+                           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-center text-slate-400 font-bold text-xs">
+                             لا يوجد طلاب متعثرون في هذه المهارة، عمل رائع! 🎉
+                           </div>
+                         )}
+                       </div>
+
+                       {/* Table format for Outstanding Students */}
+                       <div className="space-y-4">
+                         <div className="flex items-center gap-2 pb-2 border-b border-emerald-100">
+                           <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                             <Award size={16} />
+                           </div>
+                           <h4 className="font-black text-slate-800">الطلاب المتميزون</h4>
+                           <span className="mr-auto font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full text-xs">{outstanding.length}</span>
+                         </div>
+                         {outstanding.length > 0 ? (
+                           <div className="space-y-3">
+                             {outstanding.map(({ student, score }) => {
+                               const cls = data.classes.find(c => c.id === student.classId);
+                               return (
+                                 <div key={student.id} className="p-4 rounded-2xl border bg-emerald-50/50 border-emerald-100 flex items-center justify-between">
+                                   <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-black text-sm">
+                                        {student.name.substring(0, 1)}
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-slate-800 text-xs md:text-sm line-clamp-1">{student.name}</p>
+                                        <p className="font-bold text-[10px] text-slate-500">{cls?.name || 'بدون فصل'}</p>
+                                      </div>
+                                   </div>
+                                   <span className="px-3 py-1 rounded-full text-[10px] font-black text-emerald-700 bg-emerald-100/50 whitespace-nowrap">
+                                      {score === 'mastered' ? 'متقن (100%)' : 'متقدم (90%)'}
+                                   </span>
+                                 </div>
+                               );
+                             })}
+                           </div>
+                         ) : (
+                           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-center text-slate-400 font-bold text-xs">
+                             لم يحقق أحد الإتقان حتى الآن.
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   );
+                })()}
+              </div>
             </motion.div>
           </motion.div>
         )}

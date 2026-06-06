@@ -13,7 +13,9 @@ import {
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
-  Legend
+  Legend,
+  AreaChart,
+  Area
 } from 'recharts';
 import { Navbar } from './components/Navbar';
 import { Breadcrumb } from './components/Breadcrumb';
@@ -25,6 +27,7 @@ import {
   Skill, 
   Student, 
   Subject, 
+  Evaluation, 
   Evaluations, 
   EvaluationScore, 
   AppData, 
@@ -57,7 +60,9 @@ import {
   TrendingUp,
   FileText,
   GraduationCap,
-  Key
+  Key,
+  ArrowLeft,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -287,16 +292,160 @@ export default function App() {
     }
   }, [studentSession]);
 
+  const filteredSupervisorAppData = useMemo(() => {
+    if (!externalProfile || externalProfile.role !== 'supervisor') return appData;
+    if (!externalProfile.supervisorType || externalProfile.supervisorType === 'general') return appData;
+
+    const allowedGradeIds = externalProfile.allowedGradeIds || [];
+    const allowedClassIds = externalProfile.allowedClassIds || [];
+
+    // Filter grades
+    const filteredGrades = appData.grades.filter(g => {
+      if (externalProfile.supervisorType === 'stage') {
+        return allowedGradeIds.includes(g.id);
+      }
+      if (externalProfile.supervisorType === 'classes') {
+        return appData.classes.some(c => c.gradeId === g.id && allowedClassIds.includes(c.id));
+      }
+      return true;
+    });
+    const filteredGradeIds = filteredGrades.map(g => g.id);
+
+    // Filter classes
+    const filteredClasses = appData.classes.filter(c => {
+      if (externalProfile.supervisorType === 'stage') {
+        return filteredGradeIds.includes(c.gradeId);
+      }
+      if (externalProfile.supervisorType === 'classes') {
+        return allowedClassIds.includes(c.id);
+      }
+      return true;
+    });
+    const filteredClassIds = filteredClasses.map(c => c.id);
+
+    // Filter students
+    const filteredStudents = appData.students.filter(s => filteredClassIds.includes(s.classId));
+    const filteredStudentIds = filteredStudents.map(s => s.id);
+
+    // Filter subjects
+    const filteredSubjects = appData.subjects.filter(sub => {
+      if (sub.isArchived) return false;
+      const isGradeAllowed = filteredGradeIds.includes(sub.gradeId);
+      if (!isGradeAllowed) return false;
+      
+      if (externalProfile.supervisorType === 'classes') {
+        const hasClass = sub.classIds?.some(cid => filteredClassIds.includes(cid)) || (sub.classId && filteredClassIds.includes(sub.classId));
+        return !!hasClass;
+      }
+      return true;
+    });
+
+    // Filter skills
+    const filteredSkills = appData.skills.filter(sk => filteredGradeIds.includes(sk.gradeId));
+
+    // Filter quizzes
+    const filteredQuizzes = appData.quizzes.filter(q => {
+      if (q.isArchived) return false;
+      if (q.gradeId && !filteredGradeIds.includes(q.gradeId)) return false;
+      if (q.classIds && q.classIds.length > 0) {
+        return q.classIds.some(cid => filteredClassIds.includes(cid));
+      }
+      return true;
+    });
+    const filteredQuizIds = filteredQuizzes.map(q => q.id);
+
+    // Filter quizResults
+    const filteredQuizResults = (appData.quizResults || []).filter(r => 
+      filteredStudentIds.includes(r.studentId) && filteredQuizIds.includes(r.quizId)
+    );
+
+    // Filter visits
+    const filteredVisits = appData.visits.filter(v => {
+      if (v.classId) return filteredClassIds.includes(v.classId);
+      return true; 
+    });
+
+    // Filter teachers (only those instructionally connected to our filtered classes)
+    const filteredTeachers = appData.teachers.filter(t => {
+      if (t.isArchived) return false;
+      
+      const isClassTeacher = filteredClasses.some(c => c.teacherIds?.includes(t.id));
+      const isSubjectTeacher = filteredSubjects.some(sub => {
+        const hasTeacher = sub.teacherId === t.id || sub.teacherIds?.includes(t.id);
+        const hasClass = sub.classIds?.some(cid => filteredClassIds.includes(cid)) || (sub.classId && filteredClassIds.includes(sub.classId));
+        return hasTeacher && hasClass;
+      });
+      return isClassTeacher || isSubjectTeacher;
+    });
+
+    return {
+      ...appData,
+      grades: filteredGrades,
+      classes: filteredClasses,
+      students: filteredStudents,
+      subjects: filteredSubjects,
+      skills: filteredSkills,
+      quizzes: filteredQuizzes,
+      quizResults: filteredQuizResults,
+      visits: filteredVisits,
+      teachers: filteredTeachers
+    };
+  }, [appData, externalProfile]);
+
+  const filteredSupervisorEvaluations = useMemo(() => {
+    if (!externalProfile || externalProfile.role !== 'supervisor') return evaluations;
+    if (!externalProfile.supervisorType || externalProfile.supervisorType === 'general') return evaluations;
+
+    const allowedGradeIds = externalProfile.allowedGradeIds || [];
+    const allowedClassIds = externalProfile.allowedClassIds || [];
+
+    const filteredGrades = appData.grades.filter(g => {
+      if (externalProfile.supervisorType === 'stage') {
+        return allowedGradeIds.includes(g.id);
+      }
+      if (externalProfile.supervisorType === 'classes') {
+        return appData.classes.some(c => c.gradeId === g.id && allowedClassIds.includes(c.id));
+      }
+      return true;
+    });
+    const filteredGradeIds = filteredGrades.map(g => g.id);
+
+    const filteredClasses = appData.classes.filter(c => {
+      if (externalProfile.supervisorType === 'stage') {
+        return filteredGradeIds.includes(c.gradeId);
+      }
+      if (externalProfile.supervisorType === 'classes') {
+        return allowedClassIds.includes(c.id);
+      }
+      return true;
+    });
+    const filteredClassIds = filteredClasses.map(c => c.id);
+    const filteredStudentIds = new Set(appData.students.filter(s => filteredClassIds.includes(s.classId)).map(s => s.id));
+
+    const result: Record<string, Evaluation> = {};
+    Object.keys(evaluations).forEach(key => {
+      const studentId = key.split('-')[0];
+      if (filteredStudentIds.has(studentId)) {
+        result[key] = evaluations[key];
+      }
+    });
+    return result;
+  }, [evaluations, appData, externalProfile]);
+
   const [loginRole, setLoginRole] = useState<'admin' | 'teacher' | 'supervisor' | 'student'>('student');
-  const [studentPortalTab, setStudentPortalTab] = useState<'quizzes' | 'reports'>('quizzes');
+  const [studentPortalTab, setStudentPortalTab] = useState<'quizzes' | 'quiz-reports' | 'skills-reports'>('quizzes');
   const [loginIdInput, setLoginIdInput] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isLoginProcessing, setIsLoginProcessing] = useState(false);
 
-  const handleUnifiedLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loginRole !== 'admin' && !loginIdInput.trim()) {
-      setLoginError('يرجى إدخال رقم الهوية أو الاسم المطلوب');
+  const handleUnifiedLoginSubmit = async (e?: React.FormEvent, isDirectAdminLogin?: boolean) => {
+    if (e) e.preventDefault();
+    
+    // Determine the effective role for this submission
+    const effectiveRole = isDirectAdminLogin ? 'admin' : 'student'; // 'student' here just means 'normal text-based login'
+    
+    if (effectiveRole !== 'admin' && !loginIdInput.trim()) {
+      setLoginError('يرجى إدخال رقم الهوية للتحقق');
       return;
     }
     
@@ -305,7 +454,7 @@ export default function App() {
     
     try {
       // Attempt anonymous login but don't block if it fails since rules are now more permissive for reading
-      if (!auth.currentUser && loginRole !== 'admin') {
+      if (!auth.currentUser && effectiveRole !== 'admin') {
         try {
           await firestoreService.loginAnonymously();
         } catch (authErr) {
@@ -313,55 +462,64 @@ export default function App() {
         }
       }
 
+      if (effectiveRole === 'admin') {
+        try {
+          await firestoreService.login();
+          setLoginRole('admin');
+        } catch (err) {
+          setLoginError('فشل تسجيل الدخول كمسؤول. الرجاء تكرار المحاولة.');
+        } finally {
+          setIsLoginProcessing(false);
+        }
+        return;
+      }
+
       const input = normalizeNumerals(loginIdInput.trim());
-      
-      if (loginRole === 'teacher' || loginRole === 'supervisor') {
+
+      // 1. Check if the ID belongs to an external profile (Teacher / Supervisor)
+      try {
         const p = (await firestoreService.getExternalProfile(input)) as ExternalProfile | null;
         if (p && !p.isArchived) {
-          if (p.role === loginRole) {
-            setExternalProfileState(p);
-            setView('external-portal');
-          } else {
-            const roleNameAr = loginRole === 'teacher' ? 'معلم' : 'مشرف';
-            const profileRoleNameAr = p.role === 'teacher' ? 'معلم' : 'مشرف';
-            setLoginError(`رقم الهوية المدخل مسجل كـ (${profileRoleNameAr}) وليس كـ (${roleNameAr})`);
-          }
-        } else {
-          setLoginError('عذراً، رقم الهوية هذا غير مسجل في النظام كـ ' + (loginRole === 'teacher' ? 'معلم' : 'مشرف'));
-        }
-      } else if (loginRole === 'student') {
-        // Fetch students directly to avoid race condition with state population immediately after anonymous login
-        let studentsSnapshot: any[] = [];
-        try {
-          studentsSnapshot = await firestoreService.getCollection('students');
-        } catch (fetchErr: any) {
-          console.error('Students fetch failed:', fetchErr);
-          if (fetchErr.message?.includes('permission-denied')) {
-            setLoginError('تم رفض الوصول (Permission Denied). يرجى التأكد من إعدادات قواعد القراءة (Security Rules) في الفايربيس للسماح للمستخدمين بالوصول للطلاب.');
-          } else {
-            setLoginError('حدث خطأ أثناء الاتصال بالنظام. يرجى التحقق من اتصال الإنترنت الخاص بك.');
-          }
+          setExternalProfileState(p);
+          setView('external-portal');
           setIsLoginProcessing(false);
           return;
         }
+      } catch (err) {
+        console.warn('External profile check failed, continuing to student check:', err);
+      }
 
-        const allStudents = studentsSnapshot as Student[];
-        
-        // Find matching student by National ID, ID, or Name
-        const student = allStudents.find(s => 
-          (s.nationalId && s.nationalId.trim() === input) ||
-          s.id.toLowerCase() === input.toLowerCase() || 
-          s.name.trim().toLowerCase() === input.toLowerCase() ||
-          s.name.trim().replace(/\s+/g, ' ').toLowerCase() === input.replace(/\s+/g, ' ').toLowerCase()
-        );
-        
-        if (student && !student.isArchived) {
-          setStudentSession(student);
-          setShowStudentQuizPortal(true);
-          setView('student-portal');
+      // 2. Check if the ID belongs to a student
+      let studentsSnapshot: any[] = [];
+      try {
+        studentsSnapshot = await firestoreService.getCollection('students');
+      } catch (fetchErr: any) {
+        console.error('Students fetch failed:', fetchErr);
+        if (fetchErr.message?.includes('permission-denied')) {
+          setLoginError('تم رفض الوصول (Permission Denied). يرجى التأكد من إعدادات قواعد القراءة في الفايربيس للسماح بالوصول للطلاب.');
         } else {
-          setLoginError('لم يتم العثور على طالب برقم الهوية أو الاسم المدخل. يرجى التأكد من التسجيل أو كتابة البيانات بشكل صحيح.');
+          setLoginError('حدث خطأ أثناء الاتصال بالنظام. يرجى التحقق من اتصال الإنترنت الخاص بك.');
         }
+        setIsLoginProcessing(false);
+        return;
+      }
+
+      const allStudents = studentsSnapshot as Student[];
+      
+      // Find matching student by National ID, ID, or Name
+      const student = allStudents.find(s => 
+        (s.nationalId && s.nationalId.trim() === input) ||
+        s.id.toLowerCase() === input.toLowerCase() || 
+        s.name.trim().toLowerCase() === input.toLowerCase() ||
+        s.name.trim().replace(/\s+/g, ' ').toLowerCase() === input.replace(/\s+/g, ' ').toLowerCase()
+      );
+      
+      if (student && !student.isArchived) {
+        setStudentSession(student);
+        setShowStudentQuizPortal(true);
+        setView('student-portal');
+      } else {
+        setLoginError('عذراً، لم يتم العثور على هذا السجل في النظام.');
       }
     } catch (err: any) {
       console.error(err);
@@ -560,7 +718,6 @@ export default function App() {
       firestoreService.subscribeToCollection('quizSignatures', (data) => setAppData(prev => ({ ...prev, quizSignatures: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('settings', (data) => setAppData(prev => ({ ...prev, settings: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToCollection('supportPlans', (data) => setAppData(prev => ({ ...prev, supportPlans: data.length > 0 ? data : [] }))),
-      firestoreService.subscribeToCollection('studentBooks', (data) => setAppData(prev => ({ ...prev, studentBooks: data.length > 0 ? data : [] }))),
       firestoreService.subscribeToEvaluations((newEvals) => setEvaluations(newEvals))
     ];
 
@@ -770,45 +927,46 @@ export default function App() {
           backgroundSize: '24px 24px' 
         }} />
 
+        {/* Admin Login Button (Subtle, Top Left) */}
+        {!isLoginProcessing && (
+          <button
+            onClick={() => {
+              handleUnifiedLoginSubmit(undefined, true);
+            }}
+            className="absolute top-6 left-6 p-3 rounded-full text-slate-300 hover:text-slate-500 hover:bg-slate-100/50 transition-all cursor-pointer z-20 group"
+            title="تسجيل الدخول كمسؤول (Google Workspace)"
+          >
+            <ShieldCheck size={20} className="group-hover:scale-110 transition-transform" />
+          </button>
+        )}
+
         {/* Centralized High-Contrast Elegant Card */}
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[2.5rem] border border-[#7a1c22]/10 shadow-[0_40px_90px_-20px_rgba(122,28,34,0.08)] p-8 md:p-10 relative z-10 shrink-0"
+          className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[2.5rem] border border-[#7a1c22]/10 shadow-[0_40px_90px_-20px_rgba(122,28,34,0.08)] p-8 md:p-12 relative z-10 shrink-0"
         >
           {/* Aesthetic symmetrical corner dots */}
           <div className="absolute top-6 right-6 w-2.5 h-2.5 rounded-full bg-[#7a1c22]/10" />
           <div className="absolute top-6 left-6 w-2.5 h-2.5 rounded-full bg-[#e68824]/15" />
 
           {/* School & Platform Identity Header */}
-          <div className="flex flex-col items-center text-center space-y-2 mb-8 select-none">
+          <div className="flex flex-col items-center text-center space-y-3 mb-10 select-none">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.1, duration: 0.5 }}
               className="relative p-1 rounded-full bg-gradient-to-b from-[#7a1c22]/5 to-[#e68824]/5 border border-[#7a1c22]/5 mb-1"
             >
-              <SchoolLogo size={110} showText={true} imageUrl={appData.settings?.[0]?.schoolLogoUrl} />
+              <SchoolLogo size={120} showText={true} imageUrl={appData.settings?.[0]?.schoolLogoUrl} />
             </motion.div>
-            <div className="h-[1px] w-20 bg-gradient-to-r from-transparent via-[#7a1c22]/20 to-transparent mt-1" />
-            <span className="text-[11px] font-black tracking-wide text-slate-400 mt-1">منصة إتقان لتقييم المهارات</span>
+            <div className="h-[1px] w-20 bg-gradient-to-r from-transparent via-[#7a1c22]/20 to-transparent mt-2" />
+            <span className="text-xs font-black tracking-wide text-slate-400 mt-2">منصة إتقان لتقييم المهارات</span>
           </div>
 
-          {/* Login view split by role */}
-          {loginRole === 'admin' ? (
-            <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="space-y-6"
-            >
-              {/* Clean Simple Admin Identifier */}
-              <div className="text-center">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 text-[10px] font-black border border-amber-500/20">
-                  <ShieldCheck size={12} /> بوابة الإدارة العليا
-                </span>
-              </div>
-
+          <div className="space-y-6">
+            <form onSubmit={(e) => handleUnifiedLoginSubmit(e, false)} className="space-y-8">
               {loginError && (
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.98 }}
@@ -820,161 +978,43 @@ export default function App() {
                 </motion.div>
               )}
 
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setLoginError('');
-                    setIsLoginProcessing(true);
-                    try {
-                      await firestoreService.login();
-                    } catch (err) {
-                      setLoginError('فشل تسجيل الدخول كمسؤول. الرجاء تكرار المحاولة.');
-                    } finally {
-                      setIsLoginProcessing(false);
-                    }
-                  }}
-                  disabled={isLoginProcessing}
-                  className="w-full h-14 bg-gradient-to-r from-[#7a1c22] to-[#8c1d27] hover:brightness-110 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-3 shadow-lg shadow-[#7a1c22]/15 hover:shadow-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
-                >
-                  {isLoginProcessing ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <ShieldCheck size={18} className="text-amber-300" />
-                      <span>تسجيل الدخول كمسؤول (Google Workspace)</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginRole('student');
-                    setLoginIdInput('');
-                    setLoginError('');
-                  }}
-                  className="w-full h-12 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-xl font-bold text-[11px] flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <span>العودة لمنصة الدخول العامة للطلاب والمعلمين</span>
-                </button>
-              </div>
-            </motion.div>
-          ) : (
-            <div className="space-y-6">
-              {/* Category Role Tabs */}
-              <div className="bg-slate-100 p-1 rounded-xl grid grid-cols-3 gap-1.5 border border-slate-200/50">
-                {(['student', 'teacher', 'supervisor'] as const).map((role) => {
-                  const labelMap = {
-                    student: 'طالب / ولي أمر',
-                    teacher: 'معلم معتمد',
-                    supervisor: 'مشرف'
-                  };
-                  
-                  const iconMap = {
-                    student: <GraduationCap size={15} />,
-                    teacher: <BookOpen size={15} />,
-                    supervisor: <TrendingUp size={15} />
-                  };
-                  
-                  const isActive = loginRole === role;
-                  
-                  return (
-                    <button
-                      key={role}
-                      type="button"
-                      onClick={() => {
-                        setLoginRole(role);
-                        setLoginIdInput('');
-                        setLoginError('');
-                      }}
-                      className={`flex flex-col items-center justify-center gap-1.5 py-2.5 px-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
-                        isActive 
-                          ? 'bg-[#7a1c22] text-white shadow-md' 
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
-                      }`}
-                    >
-                      <span className={`${isActive ? 'text-white' : 'text-[#7a1c22]'}`}>{iconMap[role]}</span>
-                      <span>{labelMap[role]}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <form onSubmit={handleUnifiedLoginSubmit} className="space-y-6">
-                {loginError && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-2.5 text-rose-700 text-xs font-bold leading-relaxed"
-                  >
-                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                    <span>{loginError}</span>
-                  </motion.div>
-                )}
-
-                <div className="space-y-5">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-[#7a1c22] block mr-1 text-right">
-                      {loginRole === 'student' ? 'رقم الهوية الوطنية للطالب / السجل' : 'رقم الهوية الوطنية للموظف'}
-                    </label>
-                    <div className="relative flex items-center">
-                      <input
-                        type="text"
-                        value={loginIdInput}
-                        onChange={(e) => setLoginIdInput(e.target.value)}
-                        placeholder={
-                          loginRole === 'student' 
-                            ? 'أدخل رقم الهوية لمتابعة المهارات والتحصيل...' 
-                            : 'أدخل رقم هوية الموظف المقترنة بحسابك...'
-                        }
-                        className="w-full h-14 pl-4 pr-11 bg-slate-50 border border-slate-200/80 focus:border-[#7a1c22] focus:bg-white rounded-2xl outline-none text-slate-800 text-xs font-bold transition-all text-right shadow-inner focus:ring-2 focus:ring-[#7a1c22]/5"
-                        disabled={isLoginProcessing}
-                      />
-                      <div className="absolute right-4 text-[#7a1c22]/60">
-                        <Key size={16} />
-                      </div>
-                    </div>
+              <div className="space-y-4">
+                <label className="text-[11px] font-black text-blue-900 block mr-1 text-center">
+                  رقم الهوية الوطنية
+                </label>
+                <div className="relative flex items-center shadow-sm rounded-2xl bg-slate-50 border border-slate-200 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 transition-all overflow-hidden p-1.5 h-16">
+                  <div className="text-slate-300 pr-4">
+                    <Key size={20} />
                   </div>
-
+                  <input
+                    type="text"
+                    value={loginIdInput}
+                    onChange={(e) => setLoginIdInput(e.target.value)}
+                    placeholder="أدخل رقم الهوية للبدء..."
+                    className="w-full h-full bg-transparent outline-none text-slate-800 text-sm font-black text-center placeholder:text-slate-300 px-3"
+                    disabled={isLoginProcessing}
+                    autoFocus
+                  />
                   <button
                     type="submit"
-                    disabled={isLoginProcessing}
-                    className="w-full h-14 bg-gradient-to-r from-[#7a1c22] to-[#e68824] hover:brightness-110 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-[#7a1c22]/15 cursor-pointer"
+                    disabled={isLoginProcessing || !loginIdInput.trim()}
+                    className="h-full px-5 bg-gradient-to-r from-blue-600 to-blue-500 hover:brightness-110 text-white rounded-xl flex items-center justify-center shrink-0 transition-all active:scale-[0.98] disabled:opacity-50 disabled:grayscale shadow-md shadow-blue-500/20 cursor-pointer group"
+                    title="تسجيل الدخول"
                   >
                     {isLoginProcessing ? (
                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
-                      <>
-                        <LogIn size={16} />
-                        <span>تحقق وتسجيل دخول آمن للمنصة</span>
-                      </>
+                      <ArrowLeft size={22} className="group-hover:-translate-x-1 transition-transform" />
                     )}
                   </button>
                 </div>
-              </form>
-
-              {/* Secure switch for Admin login at bottom */}
-              <div className="pt-4 border-t border-slate-100 flex flex-col items-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginRole('admin');
-                    setLoginIdInput('');
-                    setLoginError('');
-                  }}
-                  className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-black rounded-lg flex items-center gap-2 transition-all hover:scale-[1.01] cursor-pointer"
-                >
-                  <ShieldCheck size={14} className="text-[#e68824]" />
-                  <span>بوابة الإدارة العليا والتدقيق</span>
-                </button>
               </div>
-            </div>
-          )}
+            </form>
+          </div>
 
           {/* Simple Institutional footer */}
-          <div className="mt-8 text-center text-[10px] font-bold text-slate-400 select-none">
-             مدارس رياض الإبداع الأهلية - تحت إشراف وزارة التعليم
+          <div className="mt-10 text-center text-[10px] font-bold text-slate-400 select-none">
+             مدارس رياض الإبداع الأهلية - تعليم متقن في بيئة تربوية آمنة
           </div>
         </motion.div>
       </div>
@@ -1049,8 +1089,8 @@ export default function App() {
             <div className="w-full h-full flex flex-col flex-1 select-none">
               {externalProfile.role === 'supervisor' ? (
                 <SupervisorDashboard 
-                   data={appData}
-                   evaluations={evaluations}
+                   data={filteredSupervisorAppData}
+                   evaluations={filteredSupervisorEvaluations}
                    academicYear={academicYear}
                    displayYear={baseAcademicYear}
                    activeTerm={activeTerm}
@@ -1109,7 +1149,7 @@ export default function App() {
                       setShowStudentQuizPortal(false);
                       setView('login');
                     }}
-                    className="px-4 h-9 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all mr-auto sm:mr-0"
+                    className="px-4 h-9 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all mr-auto sm:mr-0 cursor-pointer"
                   >
                     <LogOut size={14} />
                     <span>خروج</span>
@@ -1118,22 +1158,30 @@ export default function App() {
 
                 {/* Available Quizzes & Reports Tabs */}
                 <div className="space-y-6">
-                  <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm w-fit">
+                  {/* Modern Tab Bar */}
+                  <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm w-fit gap-1 overflow-x-auto max-w-full">
                     <button 
                       onClick={() => setStudentPortalTab('quizzes')}
-                      className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${studentPortalTab === 'quizzes' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap cursor-pointer ${studentPortalTab === 'quizzes' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
                     >
-                      الاختبارات
+                      الاختبارات المتاحة
                     </button>
                     <button 
-                      onClick={() => setStudentPortalTab('reports')}
-                      className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${studentPortalTab === 'reports' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}
+                      onClick={() => setStudentPortalTab('quiz-reports')}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap cursor-pointer ${studentPortalTab === 'quiz-reports' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
                     >
-                      تقاريري
+                      تقرير الاختبارات والتطور الزمني
+                    </button>
+                    <button 
+                      onClick={() => setStudentPortalTab('skills-reports')}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap cursor-pointer ${studentPortalTab === 'skills-reports' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+                    >
+                      تقرير المهارات والمستويات
                     </button>
                   </div>
 
-                  {studentPortalTab === 'quizzes' ? (
+                  {/* 1. Quizzes Tab */}
+                  {studentPortalTab === 'quizzes' && (
                     (() => {
                       const sClass = appData.classes.find(c => c.id === studentSession.classId);
                       const sGrade = sClass ? appData.grades.find(g => g.id === sClass.gradeId) : null;
@@ -1141,17 +1189,30 @@ export default function App() {
                       const availableQuizzes = appData.quizzes.filter(q => {
                         if (q.isArchived || q.status !== 'published') return false;
                         
-                        // 1. If class specific assignments exist, must match
+                        // ONLY AVAILABLE tests (uncompleted) should show here based on user intent
+                        const result = appData.quizResults?.find(r => r.studentId === studentSession.id && r.quizId === q.id);
+                        if (result) return false;
+
+                        // Check if scheduled date is in the future
+                        if (q.scheduledDate) {
+                          const schedDateOnly = q.scheduledDate.split('T')[0];
+                          const d = new Date();
+                          const year = d.getFullYear();
+                          const month = String(d.getMonth() + 1).padStart(2, '0');
+                          const day = String(d.getDate()).padStart(2, '0');
+                          const todayStr = `${year}-${month}-${day}`;
+                          
+                          if (schedDateOnly > todayStr) {
+                            return false;
+                          }
+                        }
+                        
                         if (q.classIds && q.classIds.length > 0) {
                           return q.classIds.includes(studentSession.classId);
                         }
-                        
-                        // 2. Fallback to Grade matches
                         if (q.gradeId && sGrade) {
                           return q.gradeId === sGrade.id;
                         }
-                        
-                        // 3. Fallback to Stage matches
                         if (q.stageId && sGrade) {
                           return q.stageId === sGrade.stage;
                         }
@@ -1159,15 +1220,21 @@ export default function App() {
                         return false;
                       });
 
-                      if (availableQuizzes.length === 0) {
+                      const sortedQuizzes = [...availableQuizzes].sort((a, b) => {
+                        const aDate = a.createdAt || a.scheduledDate || '';
+                        const bDate = b.createdAt || b.scheduledDate || '';
+                        return bDate.localeCompare(aDate);
+                      });
+
+                      if (sortedQuizzes.length === 0) {
                         return (
                           <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 space-y-4">
-                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+                            <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto text-emerald-500">
                               <CheckCircle2 size={32} />
                             </div>
                             <div>
-                              <h4 className="text-lg font-black text-slate-800">لا توجد اختبارات نشطة حالياً</h4>
-                              <p className="text-slate-400 text-xs mt-1">أنت متميز ومتقن لجميع المهارات المطلوبة منك!</p>
+                              <h4 className="text-lg font-black text-slate-800 font-sans">لا توجد اختبارات نشطة حالياً</h4>
+                              <p className="text-slate-400 text-xs mt-1 font-sans">أنت متميز ومتقن لجميع المهارات المطلوبة منك وكل الاختبارات منجزة!</p>
                             </div>
                           </div>
                         );
@@ -1175,37 +1242,34 @@ export default function App() {
 
                       return (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {availableQuizzes.map(quiz => {
-                            // Check if quiz is already solved
-                            const result = appData.quizResults?.find(r => r.studentId === studentSession.id && r.quizId === quiz.id);
-                            const isCompleted = !!result;
-                            
+                          {sortedQuizzes.map(quiz => {
                             return (
                               <div 
                                 key={quiz.id} 
-                                className={`bg-white rounded-2xl p-4 border transition-all duration-300 flex flex-col justify-between h-32 ${
-                                  isCompleted 
-                                  ? 'border-emerald-100 bg-emerald-50/10' 
-                                  : 'border-slate-100 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-500/5'
-                                }`}
+                                className="bg-white rounded-2xl p-5 border border-slate-100 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-300 flex flex-col justify-between h-34"
                               >
-                                <div className="space-y-1">
+                                <div className="space-y-1.5">
                                   <div className="flex items-center justify-between">
-                                    <span className="inline-flex items-center gap-1.5 px-2 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold">
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold">
                                       {appData.subjects.find(s => quiz.subjectIds?.includes(s.id) || quiz.subjectId === s.id)?.name || quiz.subjectName || 'مادة'}
                                     </span>
-                                    {isCompleted && (
-                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full text-[10px] font-black">
-                                        <CheckCircle2 size={12} />
-                                        {result.score}%
-                                      </span>
-                                    )}
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                   </div>
-                                  
                                   <h4 className="text-sm font-black text-slate-900 line-clamp-1">{quiz.title}</h4>
                                 </div>
-                                <div className="text-[10px] text-slate-400 font-bold">
-                                  {isCompleted ? 'لقد أكملت هذا التقييم' : 'بانتظار تنفيذ المشرف'}
+                                <div className="flex items-center justify-between mt-2">
+                                  <div className="text-[10px] text-slate-400 font-bold">
+                                    {quiz.timeLimit ? `المدة: ${quiz.timeLimit} دقيقة` : 'بدون وقت محدد'}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedQuiz(quiz);
+                                      setView('quiz');
+                                    }}
+                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] sm:text-xs font-black shadow-md transition-all active:scale-95 cursor-pointer"
+                                  >
+                                    بدء الاختبار
+                                  </button>
                                 </div>
                               </div>
                             );
@@ -1213,305 +1277,434 @@ export default function App() {
                         </div>
                       );
                     })()
-                  ) : (
-                    /* Detailed Professional Student Report */
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                           <div>
-                             <h4 className="text-xs font-black text-slate-400 uppercase mb-2">متوسط الأداء</h4>
-                             <p className="text-3xl font-black text-indigo-600">
-                               {(() => {
-                                 const results = appData.quizResults?.filter(r => r.studentId === studentSession.id) || [];
-                                 if (results.length === 0) return '0%';
-                                 
-                                 const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
-                                 const studentSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);                
-                                 const subjectAverages = studentSubjects.map(sub => {
-                                     const subResults = results.filter(r => {
-                                         const quiz = appData.quizzes.find(q => q.id === r.quizId);
-                                         return quiz?.subjectIds?.includes(sub.id);
-                                     });
-                                     return subResults.length > 0 ? subResults.reduce((a, b) => a + b.score, 0) / subResults.length : null;
-                                 }).filter(avg => avg !== null) as number[];
-                                 
-                                 const avg = subjectAverages.length > 0 ? subjectAverages.reduce((a, b) => a + b, 0) / subjectAverages.length : 0;
-                                 return `${Math.round(avg)}%`;
-                               })()}
-                             </p>
-                           </div>
-                        </div>
-                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                           <div>
-                             <h4 className="text-xs font-black text-slate-400 uppercase mb-2">الاختبارات المكتملة</h4>
-                             <p className="text-3xl font-black text-emerald-600">
-                               {appData.quizResults?.filter(r => r.studentId === studentSession.id).length || 0}
-                             </p>
-                           </div>
-                        </div>
-                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                           <div>
-                             <h4 className="text-xs font-black text-slate-400 uppercase mb-2">المهارات المنجزة</h4>
-                             <p className="text-3xl font-black text-amber-600">
-                               {(() => {
-                                 const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
-                                 const studentSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
-                                 let masteredCount = 0;
-                                 studentSubjects.forEach(sub => {
-                                   getSkillsForSubject(sub).forEach(sk => {
-                                     const evalKey = `${studentSession.id}-${sk.id}-${studentSession.academicYear || academicYear}`;
-                                     const evaluation = evaluations[evalKey];
-                                     if (evaluation?.score === 'mastered') {
-                                       masteredCount++;
-                                     }
-                                   });
-                                 });
-                                 return masteredCount;
-                               })()}
-                             </p>
-                           </div>
-                        </div>
-                      </div>
+                  )}
 
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                           <h3 className="text-xs font-black text-slate-800 mb-6 uppercase">مستوى الأداء في المواد</h3>
-                           <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={(() => {
-                              // Filter subjects for this specific student's grade
-                              const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
-                              const allSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
-                              // Ensure unique subject names
-                              const studentSubjects = Array.from(new Map<string, Subject>(allSubjects.map(item => [item.name, item])).values());
-                              
-                              const classStudents = appData.students.filter(s => s.classId === studentSession.classId);
-                              
-                              return studentSubjects.map(sub => {
-                                // Student Avg
-                                const results = appData.quizResults?.filter(r => {
-                                  const quiz = appData.quizzes.find(q => q.id === r.quizId);
-                                  return r.studentId === studentSession.id && (quiz?.subjectIds?.includes(sub.id) || quiz?.subjectId === sub.id);
-                                }) || [];
-                                const avg = results.length > 0 ? results.reduce((a, b) => a + b.score, 0) / results.length : 0;
+                  {/* 2. Chronological Quiz Reports Tab with progress line/area chart */}
+                  {studentPortalTab === 'quiz-reports' && (
+                    (() => {
+                      const solvedQuizzes = (appData.quizResults?.filter(r => r.studentId === studentSession?.id) || [])
+                        .map(res => {
+                          const quiz = appData.quizzes.find(q => q.id === res.quizId);
+                          const dateObj = res.updatedAt && res.updatedAt.toDate 
+                            ? res.updatedAt.toDate() 
+                            : (res.updatedAt?.seconds ? new Date(res.updatedAt.seconds * 1000) : new Date(res.updatedAt || Date.now()));
+                          return {
+                            id: res.id || `${res.studentId}_${res.quizId}`,
+                            title: res.title || quiz?.title || 'اختبار تقويمي',
+                            score: res.score,
+                            quizId: res.quizId || quiz?.id || '',
+                            date: dateObj,
+                            dateStr: dateObj.toLocaleDateString('ar-SA', { month: 'numeric', day: 'numeric' }),
+                            fullDateStr: dateObj.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' }),
+                            subjectName: appData.subjects.find(sub => quiz?.subjectIds?.includes(sub.id))?.name || quiz?.subjectName || 'مادة أخرى',
+                          };
+                        });
 
-                                // Class Avg
-                                const classResults = appData.quizResults?.filter(r => {
-                                    const quiz = appData.quizzes.find(q => q.id === r.quizId);
-                                    return classStudents.find(st => st.id === r.studentId) && (quiz?.subjectIds?.includes(sub.id) || quiz?.subjectId === sub.id);
-                                }) || [];
-                                const classAvg = classResults.length > 0 ? classResults.reduce((a, b) => a + b.score, 0) / classResults.length : 0;
-                                
-                                return { name: sub.name, score: avg, classAverage: classAvg };
-                              });
-                            })()}>
-                               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                               <XAxis dataKey="name" fontSize={10} fontFamily="sans-serif" fontWeight="bold" />
-                               <YAxis domain={[0, 100]} fontSize={10} fontFamily="sans-serif" />
-                               <Tooltip 
-                                  formatter={(value: number) => [`${Math.round(value)}%`, 'النسبة']}
-                                  labelStyle={{ fontFamily: 'sans-serif', fontWeight: 'bold' }}
-                               />
-                               <Legend />
-                               <Bar dataKey="score" name="أداؤك" fill="#6366f1" radius={4} />
-                               <Bar dataKey="classAverage" name="متوسط الفصل" fill="#cbd5e1" radius={4} />
-                             </BarChart>
-                           </ResponsiveContainer>
-                        </div>
-                        
-                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                            <h3 className="text-xs font-black text-slate-800 mb-6 uppercase">قائمة المواد والمعلمين</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {(() => {
-                                    const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
-                                    const allSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
-                                    const uniqueSubjects = Array.from(new Map<string, Subject>(allSubjects.map(item => [item.name, item])).values());
-                                    
-                                    return uniqueSubjects.map(s => {
-                                        const teacher = appData.teachers.find(t => t.id === s.teacherId);
-                                        const results = appData.quizResults?.filter(r => {
-                                            const quiz = appData.quizzes.find(q => q.id === r.quizId);
-                                            return r.studentId === studentSession.id && quiz?.subjectIds?.includes(s.id);
-                                        }) || [];
-                                        const avg = results.length > 0 ? Math.round(results.reduce((a, b) => a + b.score, 0) / results.length) : 0;
-                                        
-                                        return (
-                                            <div key={s.id} className="p-4 bg-slate-50 rounded-2xl space-y-2 border border-slate-100">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-xs font-black text-slate-800">{s.name}</span>
-                                                    <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{avg}%</span>
-                                                </div>
-                                                <span className="text-[10px] font-bold text-slate-500 block">المعلم: {teacher?.name || 'غير محدد'}</span>
-                                            </div>
-                                        )
-                                    });
-                                })()}
+                      const avg = solvedQuizzes.length > 0 ? Math.round(solvedQuizzes.reduce((sum, q) => sum + q.score, 0) / solvedQuizzes.length) : 0;
+                      const maxScore = solvedQuizzes.length > 0 ? Math.max(...solvedQuizzes.map(q => q.score)) : 0;
+                      const count = solvedQuizzes.length;
+
+                      const listData = [...solvedQuizzes].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+                      // 4 core subjects to track side-by-side
+                      const subjectsToTrack = [
+                        { id: 'arabic', name: 'لغتي', searchKeywords: ['لغتي', 'عربي', 'العربية'], color: '#ef4444', gradientColor: 'rgba(239, 68, 68, 0.15)', bgLight: '#fef2f2', borderLight: '#fee2e2', textColor: '#b91c1c' },
+                        { id: 'math', name: 'رياضيات', searchKeywords: ['رياضيات', 'حساب', 'الحساب'], color: '#3b82f6', gradientColor: 'rgba(59, 130, 246, 0.15)', bgLight: '#eff6ff', borderLight: '#dbeafe', textColor: '#1d4ed8' },
+                        { id: 'science', name: 'علوم', searchKeywords: ['علوم', 'العلوم', 'علم'], color: '#10b981', gradientColor: 'rgba(16, 185, 129, 0.15)', bgLight: '#ecfdf5', borderLight: '#d1fae5', textColor: '#047857' },
+                        { id: 'english', name: 'إنجليزي', searchKeywords: ['إنجليزي', 'انجليزي', 'إنجليزية', 'انجليزية', 'اللغة الإنجليزية', 'english'], color: '#8b5cf6', gradientColor: 'rgba(139, 92, 246, 0.15)', bgLight: '#f5f3ff', borderLight: '#ede9fe', textColor: '#6d28d9' }
+                      ];
+
+                      const categorizedList = [
+                        ...subjectsToTrack.map(s => {
+                          const list = listData.filter(item => {
+                            const norm = (item.subjectName || '').trim().toLowerCase();
+                            return s.searchKeywords.some(keyword => norm.includes(keyword));
+                          });
+                          return { ...s, list };
+                        }),
+                        {
+                          id: 'other',
+                          name: 'مقررات أخرى',
+                          color: '#64748b',
+                          gradientColor: 'rgba(100, 116, 139, 0.15)',
+                          bgLight: '#f8fafc',
+                          borderLight: '#e2e8f0',
+                          textColor: '#475569',
+                          list: listData.filter(item => {
+                            const norm = (item.subjectName || '').trim().toLowerCase();
+                            return !subjectsToTrack.some(s => s.searchKeywords.some(keyword => norm.includes(keyword)));
+                          })
+                        }
+                      ];
+
+                      return (
+                        <div className="space-y-6 animate-fadeIn">
+                          {/* KPI Row */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                              <div className="space-y-1">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">متوسط أداء الطالب الإجمالي</h4>
+                                <p className="text-2xl font-black text-indigo-600">{avg}%</p>
+                              </div>
+                              <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold">
+                                <TrendingUp size={20} />
+                              </div>
                             </div>
-                        </div>
-                      </div>
-
-                      {/* Professional Skills Assessment and Teacher Guidance Section */}
-                      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                          <div className="flex items-start gap-3">
-                            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
-                              <BrainCircuit className="w-5 h-5 text-indigo-600" />
+                            
+                            <div className="bg-[#f0fdf4] p-5 rounded-3xl border border-emerald-100/70 shadow-sm flex items-center justify-between">
+                              <div className="space-y-1">
+                                <h4 className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">الاختبارات المنجزة</h4>
+                                <p className="text-2xl font-black text-emerald-800">{count} اختبار</p>
+                              </div>
+                              <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600">
+                                <CheckCircle2 size={20} />
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="text-sm font-black text-slate-800">تقرير المهارات والملاحظات التوجيهية</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                                استعراض المظهر المعرفي والتوجيه السلوكي والأكاديمي لكل مادة
-                              </p>
+
+                            <div className="bg-[#fefaf0] p-5 rounded-3xl border border-amber-100/70 shadow-sm flex items-center justify-between">
+                              <div className="space-y-1">
+                                <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-wider">أعلى درجة محققة</h4>
+                                <p className="text-2xl font-black text-amber-800">{maxScore}%</p>
+                              </div>
+                              <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-600">
+                                <Award size={20} />
+                              </div>
                             </div>
                           </div>
-                   
-                          {/* Total skills overview tracker */}
-                          {(() => {
-                             const studentGradeId = appData.classes.find(c => c.id === studentSession.id || c.id === studentSession.classId)?.gradeId;
-                             const studentSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
-                             let totalSkills = 0;
-                             let assessedSkills = 0;
-                             studentSubjects.forEach(sub => {
-                               const skills = getSkillsForSubject(sub);
-                               totalSkills += skills.length;
-                               skills.forEach(sk => {
-                                 const evalKey = `${studentSession.id}-${sk.id}-${studentSession.academicYear || academicYear}`;
-                                 if (evaluations[evalKey]?.score) {
-                                   assessedSkills++;
-                                 }
-                               });
-                             });
-                             return (
-                               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full text-[10px] font-bold text-slate-500">
-                                 <span>تم رصد:</span>
-                                 <span className="font-extrabold text-indigo-600">{assessedSkills}</span>
-                                 <span>من أصل</span>
-                                 <span className="font-extrabold text-slate-700">{totalSkills}</span>
-                                 <span>مهارات</span>
-                               </div>
-                             );
-                          })()}
-                        </div>
 
-                        {/* Subject Selector Tabs */}
-                        {(() => {
-                            const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
-                            const allSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
-                            const studentSubjects = Array.from(new Map<string, Subject>(allSubjects.map(item => [item.name, item])).values());
-                            
-                            if (studentSubjects.length === 0) {
-                              return (
-                                <div className="text-center py-10 text-slate-400 font-bold text-xs">
-                                  لم يتم العثور على مواد مسجلة لهذا الصف الدراسي.
-                                </div>
-                              );
-                            }
-                            
-                            const activeSub = studentSubjects.find(s => s.id === studentReportSubjectId) || studentSubjects[0];
-                            const subjectSkills = getSkillsForSubject(activeSub);
-                            
-                            const scoreMap: Record<string, { label: string; badge: string; border: string }> = {
-                                mastered: { label: 'متقن', badge: 'text-emerald-700 bg-emerald-50 border-emerald-100', border: 'border-emerald-200' },
-                                advanced: { label: 'متقدم', badge: 'text-indigo-700 bg-indigo-50 border-indigo-100', border: 'border-indigo-200' },
-                                accepted: { label: 'مقبول', badge: 'text-cyan-700 bg-cyan-50 border-cyan-100', border: 'border-cyan-200' },
-                                weak: { label: 'ضعيف', badge: 'text-amber-700 bg-amber-50 border-amber-100', border: 'border-amber-200' },
-                                'very-weak': { label: 'ضعيف جداً', badge: 'text-rose-700 bg-rose-50 border-rose-100', border: 'border-rose-200' }
-                            };
+                          {/* 4 Subjects side-by-side Visual Timeline Tracking */}
+                          <div className="space-y-4">
+                            <div>
+                              <h3 className="text-sm font-black text-slate-905">مؤشرات ومعادلات النمو الزمني للمواد الأساسية</h3>
+                              <p className="text-[10px] text-slate-400 mt-0.5 font-sans">تراكم الدرجات ومنحنى أداء كل مادة مستقلة لتتبع التطور الزمني</p>
+                            </div>
 
-                            return (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                              {subjectsToTrack.map((sub) => {
+                                const subjectQuizzes = solvedQuizzes.filter(item => {
+                                  const norm = (item.subjectName || '').trim().toLowerCase();
+                                  return sub.searchKeywords.some(keyword => norm.includes(keyword));
+                                });
+                                const subAvg = subjectQuizzes.length > 0 ? Math.round(subjectQuizzes.reduce((sum, q) => sum + q.score, 0) / subjectQuizzes.length) : 0;
+                                const subSortedChartData = [...subjectQuizzes].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                                return (
+                                  <div 
+                                    key={sub.id} 
+                                    className="bg-white p-5 rounded-3xl border border-slate-150 shadow-sm flex flex-col justify-between space-y-3"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: sub.color }} />
+                                        <h4 className="text-xs font-black text-slate-805">{sub.name}</h4>
+                                      </div>
+                                      <div className="text-left font-sans text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+                                        <span>{subjectQuizzes.length} محاولات</span>
+                                        {subjectQuizzes.length > 0 && (
+                                          <span className="font-black px-1.5 py-0.5 rounded" style={{ backgroundColor: sub.bgLight, color: sub.textColor }}>
+                                            {subAvg}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {subSortedChartData.length === 0 ? (
+                                      <div className="h-20 flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-100 text-center p-2">
+                                        <Clock size={16} className="text-slate-300 mb-1" />
+                                        <span className="text-[9px] text-slate-400 font-bold">بانتظار تقديم أول اختبار</span>
+                                      </div>
+                                    ) : (
+                                      <div className="w-full h-20">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                          <AreaChart data={subSortedChartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+                                            <defs>
+                                              <linearGradient id={`colorScore-${sub.id}`} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor={sub.color} stopOpacity={0.35}/>
+                                                <stop offset="95%" stopColor={sub.color} stopOpacity={0}/>
+                                              </linearGradient>
+                                            </defs>
+                                            <Tooltip 
+                                              content={({ active, payload }) => {
+                                                if (active && payload && payload.length) {
+                                                  const d = payload[0].payload;
+                                                  return (
+                                                    <div className="bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800 text-right space-y-0.5 text-[9px] shadow-lg max-w-[140px]" dir="rtl">
+                                                      <p className="font-extrabold text-white truncate">{d.title}</p>
+                                                      <p className="text-slate-400 text-[8px] font-medium font-sans">{d.dateStr}</p>
+                                                      <p className="font-bold flex items-center gap-1 mt-0.5" style={{ color: sub.color }}>
+                                                        <span>الدرجة:</span>
+                                                        <span className="text-white font-black text-[10px]">{d.score}%</span>
+                                                      </p>
+                                                    </div>
+                                                  );
+                                                }
+                                                return null;
+                                              }}
+                                            />
+                                            <Area type="monotone" dataKey="score" stroke={sub.color} strokeWidth={2.5} fillOpacity={1} fill={`url(#colorScore-${sub.id})`} dot={{ r: 3, stroke: sub.color, strokeWidth: 1.5, fill: '#fff' }} />
+                                          </AreaChart>
+                                        </ResponsiveContainer>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Subject-Grouped Chronological list of quizzes */}
+                          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                              <h3 className="text-sm font-black text-slate-900">سجل ونتائج الاختبارات السابقة</h3>
+                              <span className="text-[10px] text-slate-400 font-bold">العدد الإجمالي: {listData.length}</span>
+                            </div>
+
+                            {listData.length === 0 ? (
+                              <p className="text-center py-8 text-slate-400 text-xs font-bold font-sans">لم تقم بحل أي اختبار بعد.</p>
+                            ) : (
                               <div className="space-y-6">
-                                <div className="flex flex-wrap gap-2 pb-1 border-b border-slate-100">
-                                  {studentSubjects.map(sub => {
-                                     const isActive = activeSub.id === sub.id;
-                                     const skills = getSkillsForSubject(sub);
-                                     const assessed = skills.filter(sk => evaluations[`${studentSession.id}-${sk.id}-${academicYear}`]?.score).length;
-                                     
-                                     return (
-                                       <button 
-                                         key={sub.id} 
-                                         onClick={() => setStudentReportSubjectId(sub.id)}
-                                         className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
-                                           isActive 
-                                             ? 'bg-indigo-600 text-white shadow-sm' 
-                                             : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-100'
-                                         }`}
-                                       >
-                                         <span>{sub.name}</span>
-                                         <span className={`text-[9px] px-1.5 py-0.5 rounded-md ${isActive ? 'bg-indigo-700 text-indigo-105' : 'bg-slate-200/80 text-slate-500'}`}>
-                                            {assessed}/{skills.length}
-                                         </span>
-                                       </button>
-                                     );
-                                  })}
-                                </div>
+                                {categorizedList.map((cat) => {
+                                  if (cat.list.length === 0) return null;
+                                  return (
+                                    <div key={cat.id} className="space-y-3">
+                                      <div className="flex items-center gap-2 border-r-4 pr-3.5" style={{ borderColor: cat.color }}>
+                                        <h4 className="text-xs font-black" style={{ color: cat.textColor }}>{cat.name}</h4>
+                                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full" style={{ backgroundColor: cat.bgLight, color: cat.textColor }}>
+                                          {cat.list.length} اختبار
+                                        </span>
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 py-1">
+                                        {cat.list.map((res) => {
+                                          const scoreTextColor = res.score >= 80 ? 'text-emerald-600' : 
+                                                                 res.score >= 50 ? 'text-amber-600' : 
+                                                                 'text-rose-600';
+                                          
+                                          // Compute class aggregate/average score for this quiz
+                                          const classStudentIds = appData.students
+                                            .filter(s => s.classId === studentSession?.classId)
+                                            .map(s => s.id);
 
-                                {subjectSkills.length === 0 ? (
-                                   <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
-                                     <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-350">
-                                       <Award className="w-6 h-6 text-slate-300" />
-                                     </div>
-                                     <p className="text-xs font-bold text-slate-400">لا توجد مهارات رصد مسجلة لهذه المادة حالياً.</p>
-                                   </div>
-                                ) : (
-                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                     {subjectSkills.map(skill => {
-                                        const evalKey = `${studentSession.id}-${skill.id}-${academicYear}`;
-                                        const scoreValue = evaluations[evalKey];
-                                        const scoreStyle = scoreValue?.score ? scoreMap[scoreValue.score] : null;
+                                          const classResultsForThisQuiz = appData.quizResults?.filter(r => 
+                                            r.quizId === res.quizId && 
+                                            classStudentIds.includes(r.studentId)
+                                          ) || [];
 
-                                        return (
-                                          <div key={skill.id} className="p-5 bg-slate-50/60 hover:bg-slate-50 rounded-2xl border border-slate-100/80 space-y-4 transition-all flex flex-col justify-between">
-                                            <div className="space-y-3">
-                                              <div className="flex justify-between items-start gap-4">
-                                                <h4 className="text-xs font-black text-slate-800 leading-relaxed md:max-w-[70%]">
-                                                  {skill.name}
+                                          const classAverage = classResultsForThisQuiz.length > 0
+                                            ? Math.round(classResultsForThisQuiz.reduce((sum, r) => sum + r.score, 0) / classResultsForThisQuiz.length)
+                                            : res.score;
+
+                                          return (
+                                            <div 
+                                              key={res.id} 
+                                              className="p-3 bg-white hover:bg-slate-50/70 border border-slate-150 rounded-2xl flex flex-col justify-between transition-all duration-200 shadow-sm hover:shadow-md text-right h-[135px]"
+                                            >
+                                              <div className="space-y-1">
+                                                <div className="flex items-center justify-between gap-1">
+                                                  <span className="text-[8px] px-1.5 py-0.5 bg-indigo-50 border border-indigo-150 text-indigo-700 font-extrabold rounded-md truncate max-w-[65px] leading-none" title={res.subjectName}>
+                                                    {res.subjectName}
+                                                  </span>
+                                                  <span className="text-[8px] text-slate-400 font-bold truncate">
+                                                    {res.dateStr}
+                                                  </span>
+                                                </div>
+                                                <h4 className="text-[11px] font-black text-slate-800 line-clamp-2 leading-tight h-8 overflow-hidden mt-1" title={res.title}>
+                                                  {res.title}
                                                 </h4>
-                                                <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg border shrink-0 ${
-                                                   scoreStyle 
-                                                     ? scoreStyle.badge 
-                                                     : 'text-slate-400 bg-slate-100/70 border-slate-100'
-                                                }`}>
-                                                  {scoreStyle ? scoreStyle.label : 'لم يقيّم'}
-                                                </span>
                                               </div>
                                               
-                                              {/* Mini level progress indicator */}
-                                              {scoreValue?.score && (
-                                                <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                  <div className={`h-full rounded-full transition-all duration-500 ${
-                                                    scoreValue.score === 'mastered' ? 'bg-emerald-500 w-full' :
-                                                    scoreValue.score === 'advanced' ? 'bg-indigo-500 w-[80%]' :
-                                                    scoreValue.score === 'accepted' ? 'bg-cyan-500 w-[60%]' :
-                                                    scoreValue.score === 'weak' ? 'bg-amber-500 w-[40%]' : 'bg-rose-500 w-[20%]'
-                                                  }`} />
+                                              <div className="space-y-1.5 border-t border-slate-105 pt-1.5 mt-auto">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-[9px] text-slate-400 font-medium">الدرجة:</span>
+                                                  <span className={`text-xs font-black ${scoreTextColor}`}>
+                                                    {res.score}%
+                                                  </span>
                                                 </div>
-                                              )}
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-[9px] text-slate-400 font-medium font-sans">متوسط الصف:</span>
+                                                  <span className="text-[10px] font-extrabold text-slate-600">
+                                                    {classAverage}%
+                                                  </span>
+                                                </div>
+                                              </div>
                                             </div>
-
-                                            {/* Teacher Note Speech Box */}
-                                            {scoreValue?.note && (
-                                               <div className={`mt-2 p-3 rounded-xl border-r-4 ${
-                                                 scoreValue.score === 'mastered' ? 'bg-emerald-50/40 border-emerald-450 text-emerald-950' :
-                                                 scoreValue.score === 'advanced' ? 'bg-indigo-50/30 border-indigo-400 text-indigo-950' :
-                                                 scoreValue.score === 'accepted' ? 'bg-cyan-50/30 border-cyan-400 text-cyan-950' :
-                                                 scoreValue.score === 'weak' ? 'bg-amber-50/45 border-amber-400 text-amber-950' :
-                                                 'bg-rose-50/30 border-rose-450 text-rose-950'
-                                               } text-[10px] font-bold leading-relaxed space-y-1`}>
-                                                 <div className="text-[8px] opacity-75 flex items-center gap-1 font-black uppercase tracking-wider">
-                                                   <span className="w-1 h-1 rounded-full bg-current animate-pulse" />
-                                                   توجيه وملاحظة المعلم
-                                                 </div>
-                                                 <p className="opacity-90">{scoreValue.note}</p>
-                                               </div>
-                                            )}
-                                          </div>
-                                        );
-                                     })}
-                                   </div>
-                                )}
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            );
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
+
+                  {/* 3. Skills Reports Tab */}
+                  {studentPortalTab === 'skills-reports' && (
+                    <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
+                            <BrainCircuit className="w-5 h-5 text-indigo-600" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-black text-slate-800">تقرير المهارات والملاحظات التوجيهية</h3>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5 font-sans">
+                              استعراض المظهر المعرفي والتوجيه السلوكي والأكاديمي لكل مادة
+                            </p>
+                          </div>
+                        </div>
+                 
+                        {/* Total skills overview tracker */}
+                        {(() => {
+                           const studentGradeId = appData.classes.find(c => c.id === studentSession.id || c.id === studentSession.classId)?.gradeId;
+                           const studentSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
+                           let totalSkills = 0;
+                           let assessedSkills = 0;
+                           studentSubjects.forEach(sub => {
+                             const skills = getSkillsForSubject(sub);
+                             totalSkills += skills.length;
+                             skills.forEach(sk => {
+                               const evalKey = `${studentSession.id}-${sk.id}-${studentSession.academicYear || academicYear}`;
+                               if (evaluations[evalKey]?.score) {
+                                 assessedSkills++;
+                               }
+                             });
+                           });
+                           return (
+                             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full text-[10px] font-bold text-slate-500 font-sans">
+                               <span>تم رصد:</span>
+                               <span className="font-extrabold text-indigo-600">{assessedSkills}</span>
+                               <span>من أصل</span>
+                               <span className="font-extrabold text-slate-700">{totalSkills}</span>
+                               <span>مهارات</span>
+                             </div>
+                           );
                         })()}
                       </div>
+
+                      {/* Subject Selector Tabs */}
+                      {(() => {
+                          const studentGradeId = appData.classes.find(c => c.id === studentSession.classId)?.gradeId;
+                          const allSubjects = appData.subjects.filter(s => s.gradeId === studentGradeId);
+                          const studentSubjects = Array.from(new Map<string, Subject>(allSubjects.map(item => [item.name, item])).values());
+                          
+                          if (studentSubjects.length === 0) {
+                            return (
+                              <div className="text-center py-10 text-slate-400 font-bold text-xs font-sans animate-fadeIn">
+                                لم يتم العثور على مواد مسجلة لهذا الصف الدراسي.
+                              </div>
+                            );
+                          }
+                          
+                          const activeSub = studentSubjects.find(s => s.id === studentReportSubjectId) || studentSubjects[0];
+                          const subjectSkills = getSkillsForSubject(activeSub);
+                          
+                          const scoreMap: Record<string, { label: string; badge: string; border: string }> = {
+                              mastered: { label: 'متقن', badge: 'text-emerald-700 bg-emerald-50 border-emerald-100', border: 'border-emerald-200' },
+                              advanced: { label: 'متقدم', badge: 'text-indigo-700 bg-indigo-50 border-indigo-100', border: 'border-indigo-200' },
+                              accepted: { label: 'مقبول', badge: 'text-cyan-700 bg-cyan-50 border-cyan-100', border: 'border-cyan-200' },
+                              weak: { label: 'ضعيف', badge: 'text-amber-700 bg-amber-50 border-amber-100', border: 'border-amber-200' },
+                              'very-weak': { label: 'ضعيف جداً', badge: 'text-rose-700 bg-rose-50 border-rose-100', border: 'border-rose-200' }
+                          };
+
+                          return (
+                            <div className="space-y-6 animate-fadeIn">
+                              <div className="flex flex-wrap gap-2 pb-1 border-b border-slate-100 select-none">
+                                {studentSubjects.map(sub => {
+                                   const isActive = activeSub.id === sub.id;
+                                   const skills = getSkillsForSubject(sub);
+                                   const assessed = skills.filter(sk => evaluations[`${studentSession.id}-${sk.id}-${academicYear}`]?.score).length;
+                                   
+                                   return (
+                                     <button 
+                                       key={sub.id} 
+                                       onClick={() => setStudentReportSubjectId(sub.id)}
+                                       className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                                         isActive 
+                                           ? 'bg-indigo-600 text-white shadow-sm' 
+                                           : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-100'
+                                       }`}
+                                     >
+                                       <span>{sub.name}</span>
+                                       <span className={`text-[9.5px] px-1.5 py-0.5 rounded-md ${isActive ? 'bg-indigo-700 text-white' : 'bg-slate-200/80 text-slate-500'}`}>
+                                          {assessed}/{skills.length}
+                                       </span>
+                                     </button>
+                                   );
+                                })}
+                              </div>
+
+                              {subjectSkills.length === 0 ? (
+                                 <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 animate-fadeIn">
+                                   <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-350">
+                                     <Award className="w-6 h-6 text-slate-300" />
+                                   </div>
+                                   <p className="text-xs font-bold text-slate-400 font-sans">لا توجد مهارات رصد مسجلة لهذه المادة حالياً.</p>
+                                 </div>
+                              ) : (
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
+                                   {subjectSkills.map(skill => {
+                                      const evalKey = `${studentSession.id}-${skill.id}-${academicYear}`;
+                                      const scoreValue = evaluations[evalKey];
+                                      const scoreStyle = scoreValue?.score ? scoreMap[scoreValue.score] : null;
+
+                                      return (
+                                        <div key={skill.id} className="p-5 bg-slate-50/60 hover:bg-slate-50 rounded-2xl border border-slate-100/80 space-y-4 transition-all flex flex-col justify-between">
+                                          <div className="space-y-3">
+                                            <div className="flex justify-between items-start gap-4">
+                                              <h4 className="text-xs font-black text-slate-800 leading-relaxed md:max-w-[70%]">
+                                                {skill.name}
+                                              </h4>
+                                              <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg border shrink-0 ${
+                                                 scoreStyle 
+                                                   ? scoreStyle.badge 
+                                                   : 'text-slate-400 bg-slate-100/70 border-slate-100'
+                                              }`}>
+                                                {scoreStyle ? scoreStyle.label : 'لم يقيّم'}
+                                              </span>
+                                            </div>
+                                            
+                                            {/* Mini progress bar */}
+                                            {scoreValue?.score && (
+                                              <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                <div className={`h-full rounded-full transition-all duration-500 ${
+                                                  scoreValue.score === 'mastered' ? 'bg-emerald-500 w-full' :
+                                                  scoreValue.score === 'advanced' ? 'bg-indigo-500 w-[80%]' :
+                                                  scoreValue.score === 'accepted' ? 'bg-cyan-500 w-[60%]' :
+                                                  scoreValue.score === 'weak' ? 'bg-amber-500 w-[40%]' : 'bg-rose-500 w-[20%]'
+                                                }`} />
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Note speech box */}
+                                          {scoreValue?.note && (
+                                             <div className={`mt-2 p-3 rounded-xl border-r-4 ${
+                                               scoreValue.score === 'mastered' ? 'bg-emerald-50/40 border-emerald-450 text-emerald-950' :
+                                               scoreValue.score === 'advanced' ? 'bg-indigo-50/30 border-indigo-400 text-indigo-950' :
+                                               scoreValue.score === 'accepted' ? 'bg-cyan-50/30 border-cyan-400 text-cyan-950' :
+                                               scoreValue.score === 'weak' ? 'bg-amber-50/45 border-amber-400 text-amber-950' :
+                                               'bg-rose-50/30 border-rose-455 text-rose-950'
+                                             } text-[10px] font-bold leading-relaxed space-y-1`}>
+                                               <div className="text-[8px] opacity-75 flex items-center gap-1 font-black uppercase tracking-wider font-sans">
+                                                 <span className="w-1 h-1 rounded-full bg-current animate-pulse" />
+                                                 توجيه وملاحظة المعلم
+                                               </div>
+                                               <p className="opacity-90">{scoreValue.note}</p>
+                                             </div>
+                                          )}
+                                        </div>
+                                      );
+                                   })}
+                                 </div>
+                              )}
+                            </div>
+                          );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -1544,34 +1737,46 @@ export default function App() {
              />
           )}
 
-          {view === 'quiz' && selectedQuiz && (
-             <QuizPlayer 
-               quiz={selectedQuiz} 
-               student={selectedStudent || undefined} 
-               classStudents={selectedStudent ? appData.students.filter(s => s.classId === selectedStudent.classId && !s.isArchived) : undefined}
-               quizResults={appData.quizResults}
-               onSelectStudent={setSelectedStudent}
-               allSkills={appData.skills}
-               allSubjects={appData.subjects}
-               academicYear={academicYear}
-               onClose={() => { 
-                if (studentSession) {
-                   setView('student-portal');
-                   setSelectedQuiz(null);
-                } else if (showStudentQuizPortal) {
-                   setView('quiz-login');
-                   setSelectedQuiz(null);
-                   setSelectedStudent(null);
-                } else if (selectedStudent) {
-                   setView('student-profile'); 
-                   setSelectedQuiz(null);
-                } else {
-                   setView('quiz-report');
-                   // keep selectedQuiz to view the report
-                }
-              }} 
-            />
-          )}
+          {view === 'quiz' && selectedQuiz && (() => {
+             const studentObj = selectedStudent || studentSession || undefined;
+             const alreadySolved = studentObj ? appData.quizResults?.some(r => r.studentId === studentObj.id && r.quizId === selectedQuiz.id) : false;
+             
+             if (alreadySolved && studentSession) {
+               setView('student-portal');
+               setSelectedQuiz(null);
+               return null;
+             }
+             
+             return (
+               <QuizPlayer 
+                 quiz={selectedQuiz} 
+                 student={studentObj} 
+                 classStudents={selectedStudent ? appData.students.filter(s => s.classId === selectedStudent.classId && !s.isArchived) : undefined}
+                 quizResults={appData.quizResults}
+                 onSelectStudent={setSelectedStudent}
+                 allSkills={appData.skills}
+                 allSubjects={appData.subjects}
+                 academicYear={academicYear}
+                 onClose={() => { 
+                  if (studentSession) {
+                     setStudentSession(null);
+                     setShowStudentQuizPortal(false);
+                     setView('login');
+                     setSelectedQuiz(null);
+                  } else if (showStudentQuizPortal) {
+                     setView('quiz-login');
+                     setSelectedQuiz(null);
+                     setSelectedStudent(null);
+                  } else if (selectedStudent) {
+                     setView('student-profile'); 
+                     setSelectedQuiz(null);
+                  } else {
+                     setView('quiz-report');
+                  }
+                }} 
+               />
+             );
+          })()}
 
           {view === 'quiz-login' && (
             <QuizLogin 

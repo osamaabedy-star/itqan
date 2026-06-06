@@ -48,7 +48,7 @@ interface FirestoreErrorInfo {
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, shouldThrow: boolean = true) {
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, shouldThrow: boolean = false) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -208,7 +208,7 @@ export const firestoreService = {
       const snapshot = await getDocs(collection(db, collectionName));
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, collectionName);
+      handleFirestoreError(error, OperationType.LIST, collectionName, true);
       return [];
     }
   },

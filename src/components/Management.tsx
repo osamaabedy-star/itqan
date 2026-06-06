@@ -46,6 +46,7 @@ import {
   MCQQuestion,
   RubricCategory,
   Rubric,
+  ExternalProfile,
 } from "../types";
 import { firestoreService } from "../services/firestoreService";
 import { APP_STAGES } from "../constants";
@@ -139,6 +140,22 @@ interface ManagementProps {
   onFilterTeacherChange?: (id: string) => void;
   onSelectStudent?: (s: Student) => void;
   academicYear?: string;
+  externalProfile?: ExternalProfile;
+  defaultActiveTab?: "overview"
+    | "grades"
+    | "teachers"
+    | "classes"
+    | "subjects"
+    | "skills"
+    | "quizzes"
+    | "students"
+    | "bulk"
+    | "archive"
+    | "rubrics"
+    | "external_profiles"
+    | "system_settings"
+    | "books";
+  restrictToTab?: "quizzes" | string;
 }
 
 function TabTitle({
@@ -179,6 +196,9 @@ export function Management({
   onFilterTeacherChange,
   onSelectStudent,
   academicYear,
+  externalProfile,
+  defaultActiveTab,
+  restrictToTab,
 }: ManagementProps) {
   const [activeTab, setActiveTab] = useState<
     | "overview"
@@ -195,7 +215,7 @@ export function Management({
     | "external_profiles"
     | "system_settings"
     | "books"
-  >("overview");
+  >(defaultActiveTab || (restrictToTab as any) || "overview");
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -577,15 +597,16 @@ export function Management({
 
   // Quiz Form State
   const [quizTitle, setQuizTitle] = useState("");
-  const [quizStatus, setQuizStatus] = useState<"draft" | "published">("draft");
+  const [quizStage, setQuizStage] = useState<"primary" | "middle" | "high">("primary");
+  const [quizStatus, setQuizStatus] = useState<"draft" | "published">("published");
   const [quizTerm, setQuizTerm] = useState<"term1" | "term2" | "all">("term1");
+  const [quizTimeLimit, setQuizTimeLimit] = useState<number | "">("");
+  const [quizScheduledDate, setQuizScheduledDate] = useState("");
   const [quizSubjectIds, setQuizSubjectIds] = useState<string[]>([]);
   const [quizSubjectName, setQuizSubjectName] = useState("");
   const [quizSelectedGradeId, setQuizSelectedGradeId] = useState("");
   const [quizQuestions, setQuizQuestions] = useState<MCQQuestion[]>([]);
   const [quizImageUrl, setQuizImageUrl] = useState("");
-  const [quizBookId, setQuizBookId] = useState("");
-  const [quizBookPageReference, setQuizBookPageReference] = useState("");
   const [currentQText, setCurrentQText] = useState("");
   const [currentQImageUrl, setCurrentQImageUrl] = useState("");
   const [currentQOptions, setCurrentQOptions] = useState(["", "", "", ""]);
@@ -609,23 +630,6 @@ export function Management({
   const [aiIsGenerating, setAiIsGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiSuccess, setAiSuccess] = useState("");
-  const [aiSelectedBookId, setAiSelectedBookId] = useState("");
-  const [aiSelectedChapterIds, setAiSelectedChapterIds] = useState<string[]>([]);
-
-  // Student Book States
-  const [bookTitle, setBookTitle] = useState("");
-  const [bookSelectedGradeId, setBookSelectedGradeId] = useState("");
-  const [bookSubjectName, setBookSubjectName] = useState("");
-  const [bookTerm, setBookTerm] = useState<'term1' | 'term2' | 'full'>("term1");
-  const [bookChapters, setBookChapters] = useState<{ id: string; title: string; content: string; pages?: string; }[]>([]);
-  const [editingBookId, setEditingBookId] = useState<string | null>(null);
-
-  // Chapters builder inside book creation
-  const [newChapterTitle, setNewChapterTitle] = useState("");
-  const [newChapterContent, setNewChapterContent] = useState("");
-  const [newChapterPages, setNewChapterPages] = useState("");
-  const [editingChapterIndex, setEditingChapterIndex] = useState<number | null>(null);
-  const [aiChapterGenerating, setAiChapterGenerating] = useState(false);
 
   // Sync AI choices with main quiz choices
   useEffect(() => {
@@ -647,7 +651,6 @@ export function Management({
     let finalPrompt = "";
     let finalSubject = "";
     let finalGrade = "";
-    let bookChaptersPayload: any[] | undefined = undefined;
 
     if (aiMode === "lesson") {
       if (!aiLessonName.trim()) {
@@ -660,31 +663,6 @@ export function Management({
       finalGrade = targetGrade ? targetGrade.name : "";
 
       finalPrompt = `تمارين وأسئلة متميزة في مادة ${finalSubject || "المادة"} لدرس: "${aiLessonName.trim()}" ${finalGrade ? `للصف ${finalGrade}` : ""}`;
-    } else if (aiMode === "book") {
-      if (!aiSelectedBookId) {
-        setAiError("يرجى تحديد الكتاب أو المنهج المرجعي أولاً");
-        return;
-      }
-      if (aiSelectedChapterIds.length === 0) {
-        setAiError("يرجى تحديد درس أو فصل مادي واحد على الأقل للتوليد منه");
-        return;
-      }
-
-      const selectedBook = data.studentBooks?.find((b) => b.id === aiSelectedBookId);
-      if (!selectedBook) {
-        setAiError("الملف المرجعي لهذا المنهج غير موجود");
-        return;
-      }
-
-      const selectedChapters = selectedBook.chapters?.filter((ch) => aiSelectedChapterIds.includes(ch.id)) || [];
-      bookChaptersPayload = selectedChapters.map(ch => ({ title: ch.title, content: ch.content, pages: ch.pages }));
-      const chaptersTextAndNotes = selectedChapters.map((ch) => `الدرس: ${ch.title}${ch.pages ? ` (المأخوذ من الصفحات: ${ch.pages})` : ""}\nالمحتوى المرجعي:\n${ch.content}`).join("\n\n");
-
-      finalSubject = selectedBook.subjectName;
-      const targetGrade = data.grades.find((g) => g.id === selectedBook.gradeId);
-      finalGrade = targetGrade ? targetGrade.name : "";
-
-      finalPrompt = `أنت بصدد توليد أسئلة اختبار دقيقة ومطابقة بنسبة 100% للنصوص المرجعية التالية المأخوذة من كتاب الطالب لمادة: {${selectedBook.subjectName}}:\n\n${chaptersTextAndNotes}\n\nصغ أسئلة اختبار ذكية وبنفس مفردات ومصطلحات هذا المرجع التعليمي الشامل تقيس فهم وتحصيل الطلاب.`;
     } else {
       if (!aiPrompt.trim()) {
         setAiError(
@@ -710,8 +688,7 @@ export function Management({
           prompt: finalPrompt,
           count: aiQuestionCount,
           subject: finalSubject || undefined,
-          grade: finalGrade || undefined,
-          chapters: bookChaptersPayload
+          grade: finalGrade || undefined
         }),
       });
 
@@ -1163,15 +1140,16 @@ export function Management({
     setSkillQuestions("");
     setSkillTerm("term1");
     setQuizTitle("");
-    setQuizStatus("draft");
+    setQuizStage("primary");
+    setQuizStatus("published");
     setQuizTerm("term1");
+    setQuizTimeLimit("");
+    setQuizScheduledDate("");
     setQuizSubjectIds([]);
     setQuizSubjectName("");
     setQuizSelectedGradeId("");
     setQuizQuestions([]);
     setQuizImageUrl("");
-    setQuizBookId("");
-    setQuizBookPageReference("");
     setCurrentQText("");
     setCurrentQImageUrl("");
     setCurrentQOptions(["", "", "", ""]);
@@ -1192,86 +1170,6 @@ export function Management({
     setEditingId(null);
     setParsedTeachers([]);
     setParsedStudents([]);
-    // Student Book Forms Reset
-    setBookTitle("");
-    setBookSelectedGradeId("");
-    setBookSubjectName("");
-    setBookTerm("term1");
-    setBookChapters([]);
-    setEditingBookId(null);
-    setNewChapterTitle("");
-    setNewChapterContent("");
-    setNewChapterPages("");
-    setEditingChapterIndex(null);
-    setAiChapterGenerating(false);
-  };
-
-  const handleSaveBook = async () => {
-    if (!bookTitle.trim()) {
-      alert("يرجى كتابة عنوان للتسمية");
-      return;
-    }
-    if (!bookSelectedGradeId) {
-      alert("يرجى تحديد الصف الدراسي");
-      return;
-    }
-    if (!bookSubjectName || !bookSubjectName.trim()) {
-      alert("يرجى تحديد المادة الدراسية");
-      return;
-    }
-
-    let finalChapters = [...bookChapters];
-    if (newChapterTitle.trim()) {
-      const alreadyExists = finalChapters.some(ch => ch.title.trim() === newChapterTitle.trim());
-      if (!alreadyExists) {
-        finalChapters.push({
-          id: "chap_" + Date.now() + Math.random().toString(36).substr(2, 4),
-          title: newChapterTitle.trim(),
-          content: newChapterContent.trim() || "محتوى وشرح مرجعي للدرس",
-          pages: newChapterPages.trim() || undefined
-        });
-      }
-    }
-
-    if (finalChapters.length === 0) {
-      alert("يرجى إضافة درس أو باب واحد على الأقل للمنهج الدراسي قبل الحفظ");
-      return;
-    }
-
-    const bId = editingBookId || "book_" + Date.now();
-    const bookDataToSave = {
-      id: bId,
-      title: bookTitle.trim(),
-      gradeId: bookSelectedGradeId,
-      subjectName: bookSubjectName.trim(),
-      term: bookTerm,
-      chapters: finalChapters,
-      isArchived: false,
-      updatedAt: new Date().toISOString()
-    };
-
-    try {
-      await firestoreService.saveItem("studentBooks", bId, bookDataToSave);
-      alert(editingBookId ? "تم تعديل المنهج بنجاح!" : "تم إضافة المنهج بنجاح!");
-      resetForms();
-    } catch (e) {
-      console.error(e);
-      alert("حدث خطأ أثناء الحفظ");
-    }
-  };
-
-  const handleEditBook = (book: any) => {
-    setEditingBookId(book.id);
-    setBookTitle(book.title);
-    setBookSelectedGradeId(book.gradeId);
-    setBookSubjectName(book.subjectName);
-    setBookTerm(book.term || "term1");
-    setBookChapters(book.chapters || []);
-    setNewChapterTitle("");
-    setNewChapterContent("");
-    setNewChapterPages("");
-    setEditingChapterIndex(null);
-    setActiveTab("books");
   };
 
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>, type: "teachers" | "students") => {
@@ -1385,16 +1283,19 @@ export function Management({
         ),
       );
 
-      // Grab stage from the first selected grade
-      const stageId =
+      // Grab stage from selected quizStage, falling back to grade if unset
+      const stageId = quizStage || (
         gradeIds.length > 0
           ? data.grades.find((g) => g.id === gradeIds[0])?.stage || "primary"
-          : "primary";
+          : "primary"
+      );
 
       const quizToSave: any = {
         title: quizTitle,
         status: quizStatus || "draft",
         term: quizTerm,
+        timeLimit: typeof quizTimeLimit === 'number' ? quizTimeLimit : null,
+        scheduledDate: quizScheduledDate || null,
         createdAt: new Date().toISOString(),
         stageId,
         subjectName: quizSubjectName,
@@ -1402,9 +1303,8 @@ export function Management({
         classIds: classIds,
         subjectIds: quizSubjectIds,
         teacherId: filterTeacherId,
+        creatorId: externalProfile?.id || (editingId ? data.quizzes.find(q => q.id === editingId)?.creatorId : null) || null,
         imageUrl: (quizImageUrl || "").trim(),
-        bookId: quizBookId || undefined,
-        bookPageReference: (quizBookPageReference || "").trim() || undefined,
         questions: quizQuestions
           .map((q) => ({
             ...q,
@@ -1804,8 +1704,11 @@ export function Management({
       setSkillTerm(item.term || "term1");
     } else if (type === "quizzes") {
       setQuizTitle(item.title);
+      setQuizStage(item.stageId || "primary");
       setQuizStatus(item.status || "draft");
       setQuizTerm(item.term || "term1");
+      setQuizTimeLimit(item.timeLimit || "");
+      setQuizScheduledDate(item.scheduledDate || "");
       const subIds =
         item.subjectIds || (item.subjectId ? [item.subjectId] : []);
       setQuizSubjectIds(subIds);
@@ -1826,13 +1729,7 @@ export function Management({
         setQuizSelectedGradeId("");
       }
       setQuizImageUrl(item.imageUrl || "");
-      setQuizBookId(item.bookId || "");
-      setQuizBookPageReference(item.bookPageReference || "");
       setQuizQuestions(item.questions);
-      if (item.bookId) {
-        setAiSelectedBookId(item.bookId);
-        setAiMode("book");
-      }
     } else if (type === "rubrics") {
       setRubricName(item.name);
       setRubricCategories(item.categories || []);
@@ -1995,7 +1892,8 @@ export function Management({
       )}
       
       {/* Mobile Sidebar Overlay Backdrop */}
-      {isMobileSidebarOpen && (
+      {/* Mobile Sidebar Overlay Backdrop */}
+      {!restrictToTab && isMobileSidebarOpen && (
         <div 
           onClick={() => setIsMobileSidebarOpen(false)}
           className="fixed inset-0 bg-slate-900/50 backdrop-blur-[2px] z-40 lg:hidden"
@@ -2003,152 +1901,148 @@ export function Management({
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        fixed lg:relative inset-y-0 right-0 w-72 lg:w-72 bg-white border-l border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto shrink-0 scrollbar-hide z-50 lg:translate-x-0 transition-transform duration-300
-        ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}
-      `}>
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shrink-0">
-              <ShieldCheck size={28} />
+      {!restrictToTab && (
+        <aside className={`
+          fixed lg:relative inset-y-0 right-0 w-72 lg:w-72 bg-white border-l border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto shrink-0 scrollbar-hide z-50 lg:translate-x-0 transition-transform duration-300
+          ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}
+        `}>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shrink-0">
+                <ShieldCheck size={28} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-900 leading-none">
+                  الإدارة
+                </h2>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                  إدارة النظام
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900 leading-none">
-                الإدارة
-              </h2>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                إدارة النظام
-              </p>
-            </div>
-          </div>
-          
-          {/* Close Sidebar Button for Mobile Drawer */}
-          <button
-            onClick={() => setIsMobileSidebarOpen(false)}
-            className="lg:hidden w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-500 transition-all active:scale-95 shrink-0"
-            title="إغلاق القائمة"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <nav className="flex flex-col gap-8 pb-10">
-          <div className="space-y-2">
-            <TabButton
-              active={activeTab === "overview"}
-              onClick={() => selectTab("overview")}
-              icon={<LayoutDashboard size={18} />}
-              label="نظرة عامة"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">
-              الهيكل التنظيمي
-            </p>
-            <TabButton
-              active={activeTab === "grades"}
-              onClick={() => selectTab("grades")}
-              icon={<ListRestart size={18} />}
-              label="المراحل والصفوف"
-            />
-            <TabButton
-              active={activeTab === "classes"}
-              onClick={() => selectTab("classes")}
-              icon={<Building size={18} />}
-              label="الفصول الدراسية"
-            />
-            <TabButton
-              active={activeTab === "subjects"}
-              onClick={() => selectTab("subjects")}
-              icon={<BookOpen size={18} />}
-              label="إسناد المواد"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">
-              الأشخاص والطلاب
-            </p>
-            <TabButton
-              active={activeTab === "teachers"}
-              onClick={() => selectTab("teachers")}
-              icon={<Users size={18} />}
-              label="المعلمون"
-            />
-              <TabButton
-                active={activeTab === "students"}
-                onClick={() => selectTab("students")}
-                icon={<UserPlus size={18} />}
-                label="الطلاب"
-              />
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-4 drop-shadow-sm">
-                المحتوى والأدوات
-              </p>
-              <TabButton
-                active={activeTab === "skills"}
-                onClick={() => selectTab("skills")}
-                icon={<Star size={18} />}
-                label="بنك المهارات"
-              />
-              <TabButton
-                active={activeTab === "quizzes"}
-                onClick={() => selectTab("quizzes")}
-                icon={<BrainCircuit size={18} />}
-                label="الاختبارات الذكية"
-              />
-              <TabButton
-                active={activeTab === "books"}
-                onClick={() => selectTab("books")}
-                icon={<BookOpen size={18} />}
-                label="بنك الكتب المدرسية"
-              />
-              <TabButton
-                active={activeTab === "rubrics"}
-                onClick={() => selectTab("rubrics")}
-                icon={<ShieldCheck size={18} />}
-                label="معايير الزيارات"
-              />
-              <TabButton
-                active={activeTab === "external_profiles"}
-                onClick={() => selectTab("external_profiles")}
-                icon={<ShieldCheck size={18} />}
-                label="صلاحيات الدخول"
-              />
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-4 drop-shadow-sm">
-                الإعدادات
-              </p>
-              <TabButton
-                active={activeTab === "archive"}
-                onClick={() => selectTab("archive")}
-                icon={<Archive size={18} />}
-                label="الأرشفة والترفيع"
-              />
-              <TabButton
-                active={activeTab === "system_settings"}
-                onClick={() => selectTab("system_settings")}
-                icon={<Settings size={18} />}
-                label="شعار النظام"
-              />
-            </div>
-          </nav>
-
-          <div className="mt-auto space-y-3 pt-6 border-t border-slate-200">
-            {/* Simplified Filters - removed the crowded dropdowns from first view */}
+            
+            {/* Close Sidebar Button for Mobile Drawer */}
             <button
-              onClick={onClose}
-              className="w-full flex items-center justify-center gap-2 py-5 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200 active:scale-95 transition-all"
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="lg:hidden w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-500 transition-all active:scale-95 shrink-0"
+              title="إغلاق القائمة"
             >
-              إغلاق الإدارة
+              <X size={18} />
             </button>
           </div>
-        </aside>
+
+          <nav className="flex flex-col gap-8 pb-10">
+            <div className="space-y-2">
+              <TabButton
+                active={activeTab === "overview"}
+                onClick={() => selectTab("overview")}
+                icon={<LayoutDashboard size={18} />}
+                label="نظرة عامة"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">
+                الهيكل التنظيمي
+              </p>
+              <TabButton
+                active={activeTab === "grades"}
+                onClick={() => selectTab("grades")}
+                icon={<ListRestart size={18} />}
+                label="المراحل والصفوف"
+              />
+              <TabButton
+                active={activeTab === "classes"}
+                onClick={() => selectTab("classes")}
+                icon={<Building size={18} />}
+                label="الفصول الدراسية"
+              />
+              <TabButton
+                active={activeTab === "subjects"}
+                onClick={() => selectTab("subjects")}
+                icon={<BookOpen size={18} />}
+                label="إسناد المواد"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">
+                الأشخاص والطلاب
+              </p>
+              <TabButton
+                active={activeTab === "teachers"}
+                onClick={() => selectTab("teachers")}
+                icon={<Users size={18} />}
+                label="المعلمون"
+              />
+                <TabButton
+                  active={activeTab === "students"}
+                  onClick={() => selectTab("students")}
+                  icon={<UserPlus size={18} />}
+                  label="الطلاب"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-4 drop-shadow-sm">
+                  المحتوى والأدوات
+                </p>
+                <TabButton
+                  active={activeTab === "skills"}
+                  onClick={() => selectTab("skills")}
+                  icon={<Star size={18} />}
+                  label="بنك المهارات"
+                />
+                <TabButton
+                  active={activeTab === "quizzes"}
+                  onClick={() => selectTab("quizzes")}
+                  icon={<BrainCircuit size={18} />}
+                  label="الاختبارات الذكية"
+                />
+                <TabButton
+                  active={activeTab === "rubrics"}
+                  onClick={() => selectTab("rubrics")}
+                  icon={<ShieldCheck size={18} />}
+                  label="معايير الزيارات"
+                />
+                <TabButton
+                  active={activeTab === "external_profiles"}
+                  onClick={() => selectTab("external_profiles")}
+                  icon={<ShieldCheck size={18} />}
+                  label="صلاحيات الدخول"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-4 drop-shadow-sm">
+                  الإعدادات
+                </p>
+                <TabButton
+                  active={activeTab === "archive"}
+                  onClick={() => selectTab("archive")}
+                  icon={<Archive size={18} />}
+                  label="الأرشفة والترفيع"
+                />
+                <TabButton
+                  active={activeTab === "system_settings"}
+                  onClick={() => selectTab("system_settings")}
+                  icon={<Settings size={18} />}
+                  label="شعار النظام"
+                />
+              </div>
+            </nav>
+
+            <div className="mt-auto space-y-3 pt-6 border-t border-slate-200">
+              {/* Simplified Filters - removed the crowded dropdowns from first view */}
+              <button
+                onClick={onClose}
+                className="w-full flex items-center justify-center gap-2 py-5 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200 active:scale-95 transition-all"
+              >
+                إغلاق الإدارة
+              </button>
+            </div>
+          </aside>
+        )}
 
         {/* Content Area */}
         <main className="flex-1 p-4 md:p-8 overflow-y-auto scrollbar-hide">
@@ -2177,7 +2071,6 @@ export function Management({
                   {activeTab === "external_profiles" && "صلاحيات الدخول"}
                   {activeTab === "archive" && "الأرشفة والترفيع"}
                   {activeTab === "system_settings" && "شعار النظام"}
-                  {activeTab === "books" && "بنك الكتب المدرسية"}
                 </p>
               </div>
             </div>
@@ -2235,6 +2128,17 @@ export function Management({
             </select>
             
             <div className="flex-1" />
+
+            {restrictToTab && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex items-center gap-1 bg-rose-50 hover:bg-rose-100 border border-rose-100 text-rose-700 rounded-lg px-2.5 py-1.5 font-black text-[10px] cursor-pointer transition-colors"
+              >
+                <ChevronRight size={12} className="shrink-0" />
+                <span>رجوع للوحة الإشراف</span>
+              </button>
+            )}
 
             <div className="relative w-full max-w-[150px]">
               <Search
@@ -3503,52 +3407,65 @@ export function Management({
                         </div>
                       </div>
 
+                      <div className="grid grid-cols-12 gap-4">
+                        <div className="col-span-12 md:col-span-3 space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
+                            تاريخ ظهور الاختبار للطلاب (اختياري)
+                          </label>
+                          <input
+                            type="date"
+                            value={quizScheduledDate ? quizScheduledDate.split('T')[0] : ""}
+                            onChange={(e) => setQuizScheduledDate(e.target.value)}
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
+                          />
+                        </div>
+                        <div className="col-span-12 md:col-span-3 space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
+                            المدة الزمنية للاختبار بالدقائق (اختياري)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={quizTimeLimit}
+                            onChange={(e) => setQuizTimeLimit(e.target.value ? parseInt(e.target.value, 10) : "")}
+                            placeholder="مثال: 30 دقيقة"
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
+                          />
+                        </div>
+                        <div className="col-span-12 md:col-span-3 space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
+                            المرحلة الدراسية المستهدفة
+                          </label>
+                          <select
+                            value={quizStage}
+                            onChange={(e) => setQuizStage(e.target.value as "primary" | "middle" | "high")}
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-[11px] font-black outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800 font-sans"
+                          >
+                            <option value="primary">ابتدائية</option>
+                            <option value="middle">متوسطة</option>
+                            <option value="high">ثانوية</option>
+                          </select>
+                        </div>
+                        <div className="col-span-12 md:col-span-3 space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
+                            حالة اختبار الطالب
+                          </label>
+                          <select
+                            value={quizStatus}
+                            onChange={(e) => setQuizStatus(e.target.value as "draft" | "published")}
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
+                          >
+                            <option value="published">منشور للطلاب فوراً 🟢</option>
+                            <option value="draft">مسودة (مخفي مؤقتاً) 🟡</option>
+                          </select>
+                        </div>
+                      </div>
+
                       {/* Section 1.5: Reference Book Connection */}
                       <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
                         <div className="flex items-center gap-2">
                           <BookOpen size={16} className="text-slate-600" />
                           <h4 className="text-xs font-black text-slate-700">الكتاب المنهجي وسند المعرفة (اختياري)</h4>
-                        </div>
-                        <p className="text-[9px] font-bold text-slate-400">
-                          يرجى ربط هذا الاختبار بكتاب الطالب أو منهج دراسي مخزن كمرجع معرفي لتسهيل توليد الأسئلة أوتوماتيكياً بالذكاء الاصطناعي بدقة متناهية.
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                              اختر كتاب الطالب المرجعي
-                            </label>
-                            <select
-                              value={quizBookId}
-                              onChange={(e) => {
-                                setQuizBookId(e.target.value);
-                                if (e.target.value) {
-                                  setAiSelectedBookId(e.target.value);
-                                  setAiMode("book");
-                                }
-                              }}
-                              className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                            >
-                              <option value="">لا يوجد مرجع كتاب محدد...</option>
-                              {data.studentBooks?.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                  {b.title} ({b.subjectName} - {data.grades.find(g => g.id === b.gradeId)?.name || b.gradeId})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                              أرقام الصفحات / الأجزاء المخصصة المستهدفة
-                            </label>
-                            <input
-                              type="text"
-                              value={quizBookPageReference}
-                              onChange={(e) => setQuizBookPageReference(e.target.value)}
-                              placeholder="مثلاً: الفصل الثاني كاملاً، ص 20 - ص 35"
-                              className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                            />
-                          </div>
                         </div>
                       </div>
 
@@ -3617,7 +3534,6 @@ export function Management({
                               <h3 className="text-sm font-black text-slate-800">أدوات توليد الأسئلة</h3>
                               <div className="flex flex-col bg-white p-1 rounded-2xl border border-slate-200">
                                 <button type="button" onClick={() => setAiMode("lesson")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'lesson' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>توليد باسم الدرس</button>
-                                <button type="button" onClick={() => setAiMode("book")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'book' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>من كتاب الطالب</button>
                                 <button type="button" onClick={() => setAiMode("custom")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'custom' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>توليد حر</button>
                               </div>
                               <div className="space-y-4">
@@ -3643,35 +3559,7 @@ export function Management({
                                     </div>
                                   </div>
                                 )}
-                                {aiMode === "book" && (
-                                  <div className="space-y-4 bg-white p-4 rounded-2xl border border-slate-100">
-                                    <div className="space-y-2">
-                                      <label className="text-[10px] font-black text-slate-400 uppercase">اختر المنهج</label>
-                                      <select value={aiSelectedBookId} onChange={(e) => { setAiSelectedBookId(e.target.value); setAiSelectedChapterIds([]); }} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
-                                        <option value="">اختر الكتاب...</option>
-                                        {data.studentBooks?.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
-                                      </select>
-                                    </div>
-                                    {aiSelectedBookId && (
-                                      <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase">حدد الفصول</label>
-                                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
-                                          {data.studentBooks?.find(b => b.id === aiSelectedBookId)?.chapters?.map(ch => (
-                                            <label key={ch.id} className="flex gap-2 items-center p-2 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-indigo-200">
-                                              <input type="checkbox" disabled={aiIsGenerating} checked={aiSelectedChapterIds.includes(ch.id)} onChange={(e) => { if (e.target.checked) setAiSelectedChapterIds([...aiSelectedChapterIds, ch.id]); else setAiSelectedChapterIds(aiSelectedChapterIds.filter(id => id !== ch.id)); }} className="w-4 h-4 text-indigo-600 rounded" />
-                                              <div className="flex flex-col text-right">
-                                                <span className="text-xs font-bold text-slate-700">{ch.title}</span>
-                                                {ch.pages && (
-                                                  <span className="text-[10px] font-bold text-indigo-500 mt-0.5">ص: {ch.pages}</span>
-                                                )}
-                                              </div>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+
                                 {aiMode === "custom" && (
                                   <div className="space-y-2 bg-white p-4 rounded-2xl border border-slate-100">
                                     <label className="text-[10px] font-black text-slate-400 uppercase">وصف الأسئلة</label>
@@ -3959,6 +3847,9 @@ export function Management({
                   <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3">
                     {data.quizzes
                       .filter((q) => {
+                        if (externalProfile && externalProfile.role === 'supervisor') {
+                          if (q.creatorId !== externalProfile.id) return false;
+                        }
                         if (
                           filterQuizSubjectId &&
                           !q.subjectIds?.includes(filterQuizSubjectId)
@@ -4159,37 +4050,39 @@ export function Management({
                                   </div>
                                 </div>
 
-                                <div className="flex gap-2 justify-between mt-1">
-                                  <button
-                                    disabled={isProcessing}
-                                    onClick={() => handleEdit("quizzes", quiz)}
-                                    className="flex-1 py-1 rounded-md bg-slate-50 text-slate-600 hover:bg-slate-900 hover:text-white transition-all text-[9px] font-black flex items-center justify-center gap-1"
-                                  >
-                                    <Edit2 size={10} /> تعديل
-                                  </button>
-                                  <button
-                                    disabled={isProcessing}
-                                    onClick={() =>
-                                      handleArchive("quizzes", quiz)
-                                    }
-                                    className="w-6 h-6 rounded-md bg-slate-50 text-slate-400 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition-all"
-                                  >
-                                    <Archive size={9} />
-                                  </button>
-                                  <button
-                                    disabled={isProcessing}
-                                    onClick={() =>
-                                      handleDelete(
-                                        "quizzes",
-                                        quiz.id,
-                                        quiz.title,
-                                      )
-                                    }
-                                    className="w-6 h-6 rounded-md bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-all"
-                                  >
-                                    <Trash2 size={10} />
-                                  </button>
-                                </div>
+                                {!(externalProfile && externalProfile.role === 'supervisor') && (
+                                  <div className="flex gap-2 justify-between mt-1">
+                                    <button
+                                      disabled={isProcessing}
+                                      onClick={() => handleEdit("quizzes", quiz)}
+                                      className="flex-1 py-1 rounded-md bg-slate-50 text-slate-600 hover:bg-slate-900 hover:text-white transition-all text-[9px] font-black flex items-center justify-center gap-1"
+                                    >
+                                      <Edit2 size={10} /> تعديل
+                                    </button>
+                                    <button
+                                      disabled={isProcessing}
+                                      onClick={() =>
+                                        handleArchive("quizzes", quiz)
+                                      }
+                                      className="w-6 h-6 rounded-md bg-slate-50 text-slate-400 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition-all"
+                                    >
+                                      <Archive size={9} />
+                                    </button>
+                                    <button
+                                      disabled={isProcessing}
+                                      onClick={() =>
+                                        handleDelete(
+                                          "quizzes",
+                                          quiz.id,
+                                          quiz.title,
+                                        )
+                                      }
+                                      className="w-6 h-6 rounded-md bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-all"
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             );
                           })()}
@@ -4254,368 +4147,6 @@ export function Management({
                     <label htmlFor="allowSupervisorPeerVisits" className="text-xs font-black text-slate-705 select-none cursor-pointer">
                       السماح للمشرفين بالاطلاع على الزيارات التبادلية ونقل الأثر ونقاشاتها بين المعلمين
                     </label>
-                  </div>
-                </div>
-              </div>
-            </SectionContainer>
-          )}
-
-          {activeTab === "books" && (
-            <SectionContainer
-              title="بنك الكتب المدرسية والمناهج"
-              description="حمّل مناهج الطلاب ليرتكز عليها الذكاء الاصطناعي في صياغة وتوليد أسئلة الاختبارات الذكية بدقة مذهلة"
-            >
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-                <div className="xl:col-span-5 bg-white p-6 md:p-8 rounded-[36px] border border-slate-100 shadow-minimal space-y-6">
-                  <h3 className="text-lg font-black text-slate-800 border-b border-slate-50 pb-4">
-                    {editingBookId ? "تعديل كتاب / منهج دراسي" : "إضافة كتاب / منهج دراسي جديد"}
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase">اسم الكتاب أو المنهج:</label>
-                      <input
-                        type="text"
-                        value={bookTitle}
-                        onChange={(e) => setBookTitle(e.target.value)}
-                        placeholder="مثال: كتاب العلوم - الصف الخامس"
-                        className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all text-sm"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase">الصف الدراسي:</label>
-                        <select
-                          value={bookSelectedGradeId}
-                          onChange={(e) => setBookSelectedGradeId(e.target.value)}
-                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 font-bold outline-none text-sm"
-                        >
-                          <option value="">اختر الصف...</option>
-                          {data.grades.map((g) => (
-                            <option key={g.id} value={g.id}>{g.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase">الفصل الدراسي:</label>
-                        <select
-                          value={bookTerm}
-                          onChange={(e) => setBookTerm(e.target.value as any)}
-                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 font-bold outline-none text-sm"
-                        >
-                          <option value="term1">الفصل الأول</option>
-                          <option value="term2">الفصل الثاني</option>
-                          <option value="full">العام الدراسي كامل</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase">المادة الدراسية:</label>
-                      <select
-                        value={bookSubjectName}
-                        onChange={(e) => setBookSubjectName(e.target.value)}
-                        className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 font-bold outline-none text-sm"
-                      >
-                        <option value="">اختر المادة...</option>
-                        {Array.from(new Set(data.subjects.map((s) => s.name))).map((subjectName) => (
-                          <option key={subjectName} value={subjectName}>{subjectName}</option>
-                        ))}
-                        <option value="CUSTOM">مادة مخصصة أخرى...</option>
-                      </select>
-                    </div>
-
-                    {bookSubjectName === "CUSTOM" && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase">اسم المادة المخصصة:</label>
-                        <input
-                          type="text"
-                          placeholder="اكتب اسم المادة..."
-                          onBlur={(e) => setBookSubjectName(e.target.value)}
-                          className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold outline-none text-sm"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border-t border-slate-100 pt-6 space-y-4">
-                    <h4 className="font-black text-xs text-slate-700">إضافة الفصول / الأبواب والدروس:</h4>
-                    
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div className="space-y-1 md:col-span-2">
-                          <label className="text-[9px] font-black text-slate-400 uppercase">عنوان الدرس / الفصل:</label>
-                          <input
-                            type="text"
-                            value={newChapterTitle}
-                            onChange={(e) => setNewChapterTitle(e.target.value)}
-                            placeholder="مثال: الفصل الأول: دورات حياة النباتات"
-                            className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 font-bold outline-none text-xs"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-400 uppercase">أرقام الصفحات / البند <span className="text-[9px] font-medium text-slate-400">(اختياري)</span>:</label>
-                          <input
-                            type="text"
-                            value={newChapterPages}
-                            onChange={(e) => setNewChapterPages(e.target.value)}
-                            placeholder="مثلاً: 12-15 أو الجزء الأول"
-                            className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 font-bold outline-none text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[9px] font-black text-slate-400 uppercase">محتوى أو شرح تفصيلي للدرس:</label>
-                          {newChapterContent && newChapterContent.startsWith("data:application/pdf;") && (
-                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                              تم إرفاق ملف الدرس PDF بنجاح 📁
-                            </span>
-                          )}
-                        </div>
-                        <textarea
-                          value={newChapterContent.startsWith("data:application/pdf;") ? "" : newChapterContent}
-                          onChange={(e) => setNewChapterContent(e.target.value)}
-                          placeholder="اكتب أو الصق شرح الدرس أو الكلمات المفتاحية لمساعدة الذكاء الاصطناعي... (أو اتركه فارغاً وارفع ملف PDF بالأسفل لتلخيصه)"
-                          className="w-full h-24 bg-white border border-slate-200 rounded-xl p-3 font-medium outline-none text-xs resize-y"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase">ملف الدرس (PDF) <span className="text-[9px] font-medium text-slate-400">(اختياري في حال كتابة الشرح بالأعلى)</span>:</label>
-                        <PdfUploader
-                          value={newChapterContent}
-                          onChange={setNewChapterContent}
-                          label="ملف PDF"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!newChapterTitle.trim()) {
-                              alert("يرجى كتابة عنوان للدرس للتوليد له");
-                              return;
-                            }
-                            setAiChapterGenerating(true);
-                            try {
-                              const selectedGradeName = data.grades.find(g => g.id === bookSelectedGradeId)?.name || "";
-                              const isPdf = newChapterContent.startsWith("data:application/pdf;");
-                              const response = await fetch("/api/gemini/generate-chapter-content", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  chapterTitle: newChapterTitle,
-                                  subject: bookSubjectName,
-                                  grade: selectedGradeName,
-                                  pdfData: isPdf ? newChapterContent : undefined
-                                })
-                              });
-                              const resData = await response.json();
-                              if (resData.success && resData.content) {
-                                setNewChapterContent(resData.content);
-                              } else {
-                                alert("لم نتمكن من توليد المحتوى. " + (resData.error || ""));
-                              }
-                            } catch (e: any) {
-                              alert("حدث خطأ أثناء التوليد: " + e.message);
-                            } finally {
-                              setAiChapterGenerating(false);
-                            }
-                          }}
-                          disabled={aiChapterGenerating}
-                          className="py-2.5 px-3 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100/50 text-indigo-700 rounded-xl font-bold text-[10px] flex items-center justify-center gap-1 transition-all disabled:opacity-50"
-                        >
-                          <Sparkles size={12} className="text-indigo-500" />
-                          {aiChapterGenerating ? "جاري شرح وتلخيص الدرس من خلال الذكاء الاصطناعي..." : "توليد ملخص شرح الدرس تلقائياً بالذكاء الاصطناعي ✨"}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!newChapterTitle.trim() || !newChapterContent.trim()) {
-                              alert("يرجى ملء عنوان ومحتوى الدرس أولاً");
-                              return;
-                            }
-
-                            if (editingChapterIndex !== null) {
-                              const updated = [...bookChapters];
-                              updated[editingChapterIndex] = {
-                                id: bookChapters[editingChapterIndex].id,
-                                title: newChapterTitle.trim(),
-                                content: newChapterContent.trim(),
-                                pages: newChapterPages.trim() || undefined
-                              };
-                              setBookChapters(updated);
-                              setEditingChapterIndex(null);
-                            } else {
-                              setBookChapters([
-                                ...bookChapters,
-                                {
-                                  id: "chap_" + Date.now() + Math.random().toString(36).substr(2, 4),
-                                  title: newChapterTitle.trim(),
-                                  content: newChapterContent.trim(),
-                                  pages: newChapterPages.trim() || undefined
-                                }
-                              ]);
-                            }
-
-                            setNewChapterTitle("");
-                            setNewChapterContent("");
-                            setNewChapterPages("");
-                          }}
-                          className="py-3 px-4 bg-slate-900 border border-slate-900 text-white rounded-xl font-black text-xs hover:bg-slate-800 transition-all shadow-sm"
-                        >
-                          {editingChapterIndex !== null ? "تحديث الدرس" : "إضافة الدرس المنهجي"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {bookChapters.length > 0 && (
-                      <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-hide pr-1">
-                        {bookChapters.map((chap, idx) => (
-                          <div key={chap.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between gap-3 shadow-sm">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-black text-xs text-slate-700 truncate flex items-center gap-1.5">
-                                <span>{chap.title}</span>
-                                {chap.pages && (
-                                  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                                    ص: {chap.pages}
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5 truncate">{chap.content.substring(0, 60)}...</p>
-                            </div>
-                            <div className="flex gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingChapterIndex(idx);
-                                  setNewChapterTitle(chap.title);
-                                  setNewChapterContent(chap.content);
-                                  setNewChapterPages(chap.pages || "");
-                                }}
-                                className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBookChapters(bookChapters.filter((_, i) => i !== idx));
-                                  if (editingChapterIndex === idx) {
-                                    setEditingChapterIndex(null);
-                                    setNewChapterTitle("");
-                                    setNewChapterContent("");
-                                    setNewChapterPages("");
-                                  }
-                                }}
-                                className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-100 flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetForms();
-                      }}
-                      className="py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-black text-xs hover:bg-slate-200 transition-all flex-1"
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!bookTitle.trim()) {
-                          alert("يرجى كتابة عنوان للكتاب");
-                          return;
-                        }
-                        if (!bookSelectedGradeId) {
-                          alert("يرجى تحديد الصف الدراسي");
-                          return;
-                        }
-                        if (!bookSubjectName) {
-                          alert("يرجى تحديد المادة الدراسية");
-                          return;
-                        }
-                        await handleSaveBook();
-                      }}
-                      className="py-3 px-6 bg-indigo-600 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 flex-1"
-                    >
-                      {editingBookId ? "تعديل الكتاب" : "حفظ المنهج الدراسي"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="xl:col-span-7 bg-white p-6 md:p-8 rounded-[36px] border border-slate-100 shadow-minimal space-y-6">
-                  <h3 className="text-lg font-black text-slate-800 border-b border-slate-50 pb-4">
-                    المناهج والكتب المدخلة حالياً
-                  </h3>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {data.studentBooks?.map((book) => {
-                      const gr = data.grades.find((g) => g.id === book.gradeId);
-                      return (
-                        <div key={book.id} className="bg-slate-50 p-5 rounded-3xl border border-slate-100 shadow-sm hover:border-indigo-100 transition-all relative group flex flex-col justify-between h-44">
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[9px] font-black uppercase text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">{gr?.name || "صف متميز"}</span>
-                              <span className="text-[9px] font-black uppercase text-slate-500 bg-slate-200/50 px-2.5 py-1 rounded-full">
-                                {book.term === "term1" ? "الفصل الأول" : book.term === "term2" ? "الفصل الثاني" : "العام كامل"}
-                              </span>
-                            </div>
-                            <h4 className="font-black text-slate-800 text-sm mt-3 line-clamp-1">{book.title}</h4>
-                            <p className="text-xs font-bold text-slate-400 mt-1">المادة: {book.subjectName}</p>
-                          </div>
-
-                          <div className="flex items-center justify-between pt-4 border-t border-slate-100/50">
-                            <p className="text-[10px] font-black text-indigo-500">عدد الفصول الكلي: {book.chapters?.length || 0}</p>
-                            <div className="flex gap-1">
-                              <button
-                                onClick={() => handleEditBook(book)}
-                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                                title="تعديل هذا الكتاب"
-                              >
-                                <Edit2 size={14} />
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (confirm("هل تريد حذف هذا المنهج نهائياً؟")) {
-                                    try {
-                                      await firestoreService.deleteItem("studentBooks", book.id);
-                                    } catch (err) {
-                                      alert("فشل حذف المنهج");
-                                    }
-                                  }
-                                }}
-                                className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                                title="حذف هذا الكتاب"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {(!data.studentBooks || data.studentBooks.length === 0) && (
-                      <div className="col-span-1 md:col-span-2 py-12 text-center text-slate-400 font-semibold italic text-xs">
-                        لا توجد كتب دراسية مضافة حالياً. حمّل كتاباً لمدينة المناهج لبدء التوليد الذكي.
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

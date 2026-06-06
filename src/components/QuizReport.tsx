@@ -52,6 +52,11 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
             return firstResult.updatedAt.toDate().toLocaleDateString('ar-SA');
          } else if (firstResult.updatedAt.seconds) {
             return new Date(firstResult.updatedAt.seconds * 1000).toLocaleDateString('ar-SA');
+         } else {
+            const d = new Date(firstResult.updatedAt);
+            if (!isNaN(d.getTime())) {
+               return d.toLocaleDateString('ar-SA');
+            }
          }
       }
     }

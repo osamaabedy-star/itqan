@@ -17,6 +17,7 @@ import {
 import { AppData, Evaluations, ExternalProfile } from '../types';
 import { ProfessionalReports } from './ProfessionalReports';
 import { Visits } from './Visits';
+import { Management } from './Management';
 
 interface SupervisorDashboardProps {
   data: AppData;
@@ -33,7 +34,7 @@ interface SupervisorDashboardProps {
 export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ 
   data, evaluations, academicYear, displayYear, activeTerm, externalProfile, onLogout, onToggleTerm, calculatePerformance 
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'visits'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'visits' | 'quizzes'>('overview');
   const [filterTeacherId, setFilterTeacherId] = useState<string>('');
 
   const totalStudents = data.students.filter(s => !s.isArchived).length;
@@ -112,6 +113,14 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
           icon={<Briefcase size={16} />} 
           label="سجل الزيارات" 
         />
+        {externalProfile.role === 'supervisor' && (externalProfile.supervisorType === 'general' || externalProfile.supervisorType === 'stage') && (
+          <TabButton 
+            active={activeTab === 'quizzes'} 
+            onClick={() => setActiveTab('quizzes')} 
+            icon={<BrainCircuit size={16} />} 
+            label="الاختبارات الذكية" 
+          />
+        )}
       </nav>
 
       {/* Main Content */}
@@ -234,6 +243,32 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                   activeTerm={activeTerm} 
                   filterTeacherId={filterTeacherId}
                 />
+              </motion.div>
+            )}
+
+            {activeTab === 'quizzes' && (
+              <motion.div 
+                key="quizzes"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="space-y-6"
+              >
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mb-4">
+                   <h2 className="text-xl font-black text-slate-800 mb-2">إدارة واشتقاق الاختبارات الذكية للمرحلة</h2>
+                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">بناء وتنسيق اختبارات مخصصة للمرحلة الدراسية المحددة</p>
+                </div>
+                <div className="h-[80vh] flex flex-col bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-md">
+                  <Management 
+                    data={data} 
+                    evaluations={evaluations}
+                    onClose={() => setActiveTab('overview')} 
+                    filterTeacherId={filterTeacherId}
+                    onFilterTeacherChange={setFilterTeacherId}
+                    academicYear={academicYear}
+                    restrictToTab="quizzes"
+                    externalProfile={externalProfile}
+                  />
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

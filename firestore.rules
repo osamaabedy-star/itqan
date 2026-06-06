@@ -24,7 +24,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -203,13 +203,13 @@ service cloud.firestore {
 
     match /quizResults/{resultId} {
       allow read: if true;
-      allow create, update: if isSignedIn() && isValidQuizResult(incoming());
+      allow create, update: if isValidQuizResult(incoming());
       allow delete: if isAdmin();
     }
 
     match /evaluations/{evaluationId} {
       allow read: if true;
-      allow create, update: if isSignedIn() && isValidEvaluation(incoming());
+      allow create, update: if isValidEvaluation(incoming());
       allow delete: if isAdmin();
     }
 

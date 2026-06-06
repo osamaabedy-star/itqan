@@ -66,11 +66,14 @@ export interface Quiz {
   subjectName?: string;
   subjectIds?: string[];
   teacherId?: string;
+  creatorId?: string;
   imageUrl?: string; // Added image for quiz
   questions: MCQQuestion[];
   isArchived?: boolean;
   status?: 'draft' | 'published';
   term?: 'term1' | 'term2' | 'full';
+  timeLimit?: number; // In minutes
+  scheduledDate?: string; // ISO date string
   updatedAt?: any;
   createdAt?: any;
 }
@@ -205,25 +208,6 @@ export interface SupportPlan {
   createdAt: string;
 }
 
-export interface StudentBookChapter {
-  id: string;
-  title: string;
-  content: string;
-  pages?: string;
-}
-
-export interface StudentBook {
-  id: string;
-  title: string;
-  gradeId: string;
-  subjectName: string;
-  term: 'term1' | 'term2' | 'full';
-  chapters: StudentBookChapter[];
-  isArchived?: boolean;
-  updatedAt?: string;
-  createdBy?: string;
-}
-
 export interface AppData {
   teachers: Teacher[];
   grades: Grade[];
@@ -239,5 +223,4 @@ export interface AppData {
   quizSignatures?: QuizSignature[];
   settings?: any[];
   supportPlans?: SupportPlan[];
-  studentBooks?: StudentBook[];
 }
