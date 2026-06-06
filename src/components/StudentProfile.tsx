@@ -39,7 +39,8 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { AppData, Student, Quiz, Evaluation, Subject, Skill } from '../types';
+import { AppData, Student, Quiz, Evaluation, Subject, Skill, QuizResult } from '../types';
+import { isQuizSolved, normalizeId } from '../utils/quizUtils';
 import { firestoreService } from '../services/firestoreService';
 import { QuickEvalDialog } from './quick-eval/QuickEvalDialog';
 
@@ -79,10 +80,15 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
   });
   const activeQuizIds = new Set(activeQuizzes.map(q => q.id));
   
-  const quizResults = data.quizResults?.filter(r => 
-    r.studentId === student.id && 
-    activeQuizIds.has(r.quizId)
-  ) || [];
+  const quizResults = (data.quizResults || []).filter(r => {
+    // Robust check for results belonging to this student
+    const sId = normalizeId(student.id);
+    const sNatId = normalizeId(student.nationalId);
+    const rStudentId = normalizeId(r.studentId);
+    
+    const isStudentMatch = rStudentId === sId || (sNatId && rStudentId === sNatId);
+    return isStudentMatch && activeQuizIds.has(r.quizId);
+  });
 
   const studentClasses = data.classes.filter(c => c.id === student.classId);
   const studentClass = studentClasses[0];
@@ -513,41 +519,57 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
                               </div>
 
                               {subSortedChartData.length === 0 ? (
-                                <div className="h-16 flex flex-col items-center justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-100 text-center p-2">
+                                <div className="h-20 flex flex-col items-center justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-100 text-center p-2">
                                   <Clock size={12} className="text-slate-300 mb-1" />
                                   <span className="text-[8px] text-slate-400 font-bold">لم تُجر اختبارات بعد</span>
                                 </div>
                               ) : (
-                                <div className="w-full h-16">
-                                  <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={subSortedChartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                                      <defs>
-                                        <linearGradient id={"colorScore-prof-" + sub.id} x1="0" y1="0" x2="0" y2="1">
-                                          <stop offset="5%" stopColor={sub.color} stopOpacity={0.35}/>
-                                          <stop offset="95%" stopColor={sub.color} stopOpacity={0}/>
-                                        </linearGradient>
-                                      </defs>
-                                      <Tooltip 
-                                        content={({ active, payload }) => {
-                                          if (active && payload && payload.length) {
-                                            const d = payload[0].payload;
-                                            return (
-                                              <div className="bg-slate-900 text-white p-2 rounded-lg border border-slate-800 text-right space-y-0.5 text-[9px] shadow-lg max-w-[130px]" dir="rtl">
-                                                <p className="font-extrabold text-white truncate">{d.title}</p>
-                                                <p className="text-slate-400 text-[8px] font-medium font-sans">{d.dateStr}</p>
-                                                <p className="font-bold flex items-center gap-1 mt-0.5" style={{ color: sub.color }}>
-                                                  <span>الدرجة:</span>
-                                                  <span className="text-white font-black text-[10px]">{d.score}%</span>
-                                                </p>
-                                              </div>
-                                            );
-                                          }
-                                          return null;
-                                        }}
-                                      />
-                                      <Area type="monotone" dataKey="score" stroke={sub.color} strokeWidth={2} fillOpacity={1} fill={"url(#colorScore-prof-" + sub.id + ")"} dot={{ r: 2, stroke: sub.color, strokeWidth: 1.5, fill: '#fff' }} />
-                                    </AreaChart>
-                                  </ResponsiveContainer>
+                                <div className="w-full flex-1 flex flex-col mt-2">
+                                  <div className="w-full h-20">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <AreaChart data={subSortedChartData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                                        <defs>
+                                          <linearGradient id={"colorScore-prof-" + sub.id} x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor={sub.color} stopOpacity={0.35}/>
+                                            <stop offset="95%" stopColor={sub.color} stopOpacity={0}/>
+                                          </linearGradient>
+                                        </defs>
+                                        <XAxis 
+                                          dataKey="dateStr" 
+                                          reversed={true} 
+                                          axisLine={false} 
+                                          tickLine={false} 
+                                          tick={{ fontSize: 8, fill: '#64748b', fontWeight: 'bold' }} 
+                                          dy={5}
+                                        />
+                                        <YAxis domain={[0, 100]} hide={true} />
+                                        <Tooltip 
+                                          content={({ active, payload }) => {
+                                            if (active && payload && payload.length) {
+                                              const d = payload[0].payload;
+                                              return (
+                                                <div className="bg-slate-900 text-white p-2 rounded-lg border border-slate-800 text-right space-y-0.5 text-[9px] shadow-lg max-w-[130px]" dir="rtl">
+                                                  <p className="font-extrabold text-white truncate">{d.title}</p>
+                                                  <p className="text-slate-400 text-[8px] font-medium font-sans">{d.dateStr}</p>
+                                                  <p className="font-bold flex items-center gap-1 mt-0.5" style={{ color: sub.color }}>
+                                                    <span>الدرجة:</span>
+                                                    <span className="text-white font-black text-[10px]">{d.score}%</span>
+                                                  </p>
+                                                </div>
+                                              );
+                                            }
+                                            return null;
+                                          }}
+                                        />
+                                        <Area type="monotone" dataKey="score" stroke={sub.color} strokeWidth={2} fillOpacity={1} fill={"url(#colorScore-prof-" + sub.id + ")"} dot={{ r: 2, stroke: sub.color, strokeWidth: 1.5, fill: '#fff' }} />
+                                      </AreaChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                  <div className="text-[7px] text-slate-300 font-bold flex justify-between px-2 mt-1 items-center">
+                                    <span>الأحدث</span>
+                                    <div className="flex-1 border-b border-dashed border-slate-200 mx-2"></div>
+                                    <span>الأقدم</span>
+                                  </div>
                                 </div>
                               )}
                             </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppData, Class, Student, Quiz, Grade } from '../types';
+import { isQuizSolved } from '../utils/quizUtils';
 import { Users, ChevronRight, BrainCircuit, Search, BookOpen, ArrowRight, ShieldCheck, Award, XCircle, CheckCircle2 } from 'lucide-react';
 
 interface QuizLoginProps {
@@ -43,9 +44,10 @@ export function QuizLogin({ data, onSelect, onClose }: QuizLoginProps) {
     (s.name.toLowerCase().includes(searchTerm.toLowerCase())) && 
     (!s.isArchived)
   ).map(s => {
-    const isCompleted = data.quizResults?.some(r => r.studentId === s.id && r.quizId === selectedQuiz?.id);
+    // Robust check for already solved quizzes using shared utility
+    const isCompleted = isQuizSolved(s, selectedQuiz, data.quizResults);
     return { ...s, isCompleted };
-  });
+  }).filter(s => !s.isCompleted); // Hide completed students from the selection list as per user intent
 
   const availableQuizzes = data.quizzes.filter(q => {
     if (q.isArchived || q.status !== 'published') return false;

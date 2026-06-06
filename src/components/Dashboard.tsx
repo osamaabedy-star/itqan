@@ -44,6 +44,7 @@ import {
 } from "../types";
 import { ClassCard } from "./ClassCard";
 import { MissingEvaluationsCard } from "./MissingEvaluationsCard";
+import { MissingQuizzesCard } from "./MissingQuizzesCard";
 
 interface DashboardProps {
   data: AppData;
@@ -81,6 +82,11 @@ export function Dashboard({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null);
+
+  // New filters for monitoring cards
+  const [monitorTerm, setMonitorTerm] = useState<'term1' | 'term2' | 'full'>(activeTerm || 'full');
+  const [monitorGradeId, setMonitorGradeId] = useState<string>("");
+  const [monitorSubjectId, setMonitorSubjectId] = useState<string>("");
 
   const displayedGrades = data.grades
     .filter((g) => !g.isArchived)
@@ -232,13 +238,12 @@ export function Dashboard({
 
         {/* View Switch: Stages -> Grades -> Classes */}
         {!selectedStageId ? (
-          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex justify-between items-center px-2 mt-2">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex justify-between items-center px-2 mt-4">
               <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                اختر المرحلة التعليمية
+                استكشاف المراحل التعليمية
               </h2>
               <div className="h-[2px] flex-1 mx-6 bg-slate-100 rounded-full" />
-              {/* Removed تهيئة النظام button per user request */}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -339,17 +344,95 @@ export function Dashboard({
               )}
             </div>
 
-            <div className="mt-8">
-              <MissingEvaluationsCard 
-                data={data}
-                evaluations={evaluations}
-                academicYear={academicYear}
-                filterTeacherId={filterTeacherId}
-                onStudentClick={(studentId) => {
-                  const s = data.students.find(st => st.id === studentId);
-                  if (s) onSelectStudent(s);
-                }}
-              />
+            {/* Split Monitoring Sections with Filters */}
+            <div className="space-y-6 mt-12 bg-indigo-50/30 p-8 rounded-[3rem] border border-indigo-100">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                   <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200">
+                         <ShieldAlert size={20} />
+                      </div>
+                      <div>
+                         <h3 className="text-xl font-black text-slate-800">مركز المتابعة والرقابة</h3>
+                         <p className="text-xs font-bold text-slate-400">رصد المهارات والاختبارات غير المكتملة</p>
+                      </div>
+                   </div>
+
+                   <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">الفصل:</span>
+                        <select 
+                          value={monitorTerm}
+                          onChange={(e) => setMonitorTerm(e.target.value as any)}
+                          className="text-[11px] font-black text-indigo-600 bg-transparent outline-none border-none cursor-pointer"
+                        >
+                          <option value="full">الكل</option>
+                          <option value="term1">الفصل الأول</option>
+                          <option value="term2">الفصل الثاني</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">الصف:</span>
+                        <select 
+                          value={monitorGradeId}
+                          onChange={(e) => setMonitorGradeId(e.target.value)}
+                          className="text-[11px] font-black text-indigo-600 bg-transparent outline-none border-none cursor-pointer"
+                        >
+                          <option value="">جميع الصفوف</option>
+                          {displayedGrades.map(g => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">المادة:</span>
+                        <select 
+                          value={monitorSubjectId}
+                          onChange={(e) => setMonitorSubjectId(e.target.value)}
+                          className="text-[11px] font-black text-indigo-600 bg-transparent outline-none border-none cursor-pointer"
+                        >
+                          <option value="">جميع المواد</option>
+                          {Array.from(new Set(data.subjects.filter(s => !s.isArchived).map(s => s.name))).sort().map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <MissingEvaluationsCard 
+                    data={data}
+                    evaluations={evaluations}
+                    academicYear={academicYear}
+                    filterTeacherId={filterTeacherId}
+                    filterGradeId={monitorGradeId}
+                    filterSubjectName={monitorSubjectId}
+                    filterTerm={monitorTerm}
+                    onStudentClick={(studentId) => {
+                      const s = data.students.find(st => st.id === studentId);
+                      if (s) {
+                        const cls = data.classes.find(c => c.id === s.classId);
+                        if (cls) onSelectClass(cls);
+                        onSelectStudent(s);
+                        onNavigate("quick-matrix");
+                      }
+                    }}
+                  />
+                  <MissingQuizzesCard 
+                    data={data}
+                    academicYear={academicYear}
+                    filterTeacherId={filterTeacherId}
+                    filterGradeId={monitorGradeId}
+                    filterSubjectName={monitorSubjectId}
+                    filterTerm={monitorTerm}
+                    onStudentQuizClick={(student, quiz) => {
+                      onSelectStudent(student);
+                      onSelectQuiz(quiz, student);
+                    }}
+                  />
+                </div>
             </div>
           </div>
         ) : !selectedGradeId ? (

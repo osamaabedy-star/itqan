@@ -615,6 +615,8 @@ export function Management({
   const [quizSelectedGradeId, setQuizSelectedGradeId] = useState("");
   const [quizQuestions, setQuizQuestions] = useState<MCQQuestion[]>([]);
   const [quizImageUrl, setQuizImageUrl] = useState("");
+  const [quizBookUrl, setQuizBookUrl] = useState("");
+  const [quizLessonName, setQuizLessonName] = useState("");
   const [currentQText, setCurrentQText] = useState("");
   const [currentQImageUrl, setCurrentQImageUrl] = useState("");
   const [currentQOptions, setCurrentQOptions] = useState(["", "", "", ""]);
@@ -1158,6 +1160,8 @@ export function Management({
     setQuizSelectedGradeId("");
     setQuizQuestions([]);
     setQuizImageUrl("");
+    setQuizBookUrl("");
+    setQuizLessonName("");
     setCurrentQText("");
     setCurrentQImageUrl("");
     setCurrentQOptions(["", "", "", ""]);
@@ -1313,6 +1317,8 @@ export function Management({
         teacherId: filterTeacherId,
         creatorId: externalProfile?.id || (editingId ? data.quizzes.find(q => q.id === editingId)?.creatorId : null) || null,
         imageUrl: (quizImageUrl || "").trim(),
+        bookUrl: (quizBookUrl || "").trim(),
+        lessonName: (quizLessonName || "").trim(),
         questions: quizQuestions
           .map((q) => ({
             ...q,
@@ -1737,6 +1743,8 @@ export function Management({
         setQuizSelectedGradeId("");
       }
       setQuizImageUrl(item.imageUrl || "");
+      setQuizBookUrl(item.bookUrl || "");
+      setQuizLessonName(item.lessonName || "");
       setQuizQuestions(item.questions);
     } else if (type === "rubrics") {
       setRubricName(item.name);
@@ -3326,108 +3334,76 @@ export function Management({
                       type="text"
                       value={skillName}
                       onChange={(e) => setSkillName(e.target.value)}
-                      placeholder="اسم المهارة..."
-                      className="flex-[2] bg-white border border-slate-200 rounded-xl px-4 h-14 font-bold outline-none"
+                      placeholder="اسم المهارة الجديدة..."
+                      className="flex-[3] h-14 bg-white border border-slate-200 rounded-2xl px-6 font-bold outline-none"
                     />
-                  </div>
-                  <textarea
-                    value={skillQuestions}
-                    onChange={(e) => setSkillQuestions(e.target.value)}
-                    placeholder="أضف الأسئلة القياسية (سؤال في كل سطر)..."
-                    className="w-full h-32 bg-white border border-slate-200 rounded-xl p-4 font-medium resize-none outline-none"
-                  />
-                  <div className="flex gap-3 self-end">
                     <button
                       onClick={handleAddSkill}
-                      className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black hover:bg-slate-800 transition-colors flex items-center gap-2"
+                      className="h-14 bg-indigo-600 text-white rounded-2xl px-10 font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-200 flex items-center gap-2"
                     >
-                      <Save size={18} />
-                      {editingId ? "تعديل المهارة" : "حفظ المهارة في البنك"}
+                      <Plus size={20} />
+                      إضافة المهارة
                     </button>
-                    {editingId && (
-                      <button
-                        onClick={resetForms}
-                        className="bg-slate-200 text-slate-500 px-4 rounded-xl"
-                      >
-                        <X size={18} />
-                      </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
+                    {data.skills
+                      .filter((s) => !s.isArchived)
+                      .filter(
+                        (s) =>
+                          (!targetGradeId ||
+                            s.gradeId === targetGradeId) &&
+                          (!targetSubjectName ||
+                            s.subjectName === targetSubjectName) &&
+                          (!skillTerm || s.term === skillTerm),
+                      )
+                      .map((skill) => {
+                        const grade = data.grades.find(
+                          (g) => g.id === skill.gradeId,
+                        );
+                        return (
+                          <div
+                            key={skill.id}
+                            className="bg-slate-50 p-6 rounded-[24px] border border-slate-100 flex flex-col gap-4 relative group"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className="space-y-1">
+                                <h4 className="font-black text-slate-800 text-lg line-clamp-1">
+                                  {skill.name}
+                                </h4>
+                                <div className="flex gap-2">
+                                  <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                                    {skill.subjectName}
+                                  </span>
+                                  <span className="text-[10px] font-black text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                                    {grade ? grade.name : "صف محذوف"}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                <button
+                                  onClick={() =>
+                                    handleDelete("skills", skill.id, skill.name)
+                                  }
+                                  className="w-8 h-8 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center shadow-sm hover:bg-rose-500 hover:text-white"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {data.skills.length === 0 && (
+                      <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                        <Star size={40} className="mx-auto text-slate-200 mb-4" />
+                        <p className="text-slate-400 font-bold">
+                          لا توجد مهارات مضافة حالياً.
+                        </p>
+                      </div>
                     )}
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {data.skills
-                    .filter((s) => {
-                      if (filterGradeId && s.gradeId !== filterGradeId)
-                        return false;
-                      if (filterSubjectId) {
-                        const subject = data.subjects.find(
-                          (sub) => sub.id === filterSubjectId,
-                        );
-                        if (subject && s.subjectName !== subject.name)
-                          return false;
-                      }
-                      return true;
-                    })
-                    .filter(
-                      (s) =>
-                        s.name.includes(searchQuery) ||
-                        s.subjectName?.includes(searchQuery),
-                    )
-                    .map((s) => (
-                      <div
-                        key={s.id}
-                        className="p-6 bg-white rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm hover:border-indigo-100 transition-all"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[9px] font-black border border-indigo-100">
-                              {s.subjectName}
-                            </span>
-                            <span className="text-[9px] font-bold text-slate-400">
-                              {
-                                data.grades.find((g) => g.id === s.gradeId)
-                                  ?.name
-                              }
-                            </span>
-                          </div>
-                          <p className="font-black text-slate-800">{s.name}</p>
-                          <p className="text-[10px] text-zinc-500 font-bold mt-1">
-                            اسم المادة:{" "}
-                            <span className="text-slate-900">
-                              {s.subjectName}
-                            </span>
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-bold mt-1 italic">
-                            عدد الأسئلة: {s.questions.length}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEdit("skills", s)}
-                            title="تعديل"
-                            className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                          >
-                            <Edit2 size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete("skills", s.id, s.name)}
-                            title="حذف"
-                            className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  {data.skills.length === 0 && (
-                    <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                      <Star size={40} className="mx-auto text-slate-200 mb-4" />
-                      <p className="text-slate-400 font-bold">
-                        لا توجد مهارات مضافة حالياً.
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
             </SectionContainer>
@@ -3438,427 +3414,206 @@ export function Management({
               title="مصمم الاختبارات الذكية"
               description="أنشئ تجارب تعليمية تفاعلية بأسلوب احترافي"
             >
-                {/* Professional Quiz Builder Container */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-                  <div className="p-5 space-y-6">
-                    {/* Section 1: Basic Identity */}
-                    <div className="flex flex-col gap-4">
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="col-span-12 md:col-span-4 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                            هوية الاختبار وعنوانه
-                          </label>
-                          <input
-                            type="text"
-                            value={quizTitle}
-                            onChange={(e) => setQuizTitle(e.target.value)}
-                            placeholder="مثال: رحلة الفهم القرائي (١)..."
-                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
-                          />
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div className="p-5 space-y-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                      <div className="col-span-12 md:col-span-4 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">هوية الاختبار وعنوانه</label>
+                        <input type="text" value={quizTitle} onChange={(e) => setQuizTitle(e.target.value)} placeholder="مثال: رحلة الفهم القرائي (١)..." className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm" />
+                      </div>
+                      <div className="col-span-12 md:col-span-3 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">المادة الدراسية المستهدفة</label>
+                        <select value={quizSubjectName} onChange={(e) => { setQuizSubjectName(e.target.value); setQuizSubjectIds([]); }} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800">
+                          <option value="">اختر المادة الدراسية...</option>
+                          {getSubjectOptions().map(name => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-12 md:col-span-2 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">الفصل الدراسي الأكاديمي</label>
+                        <select value={quizTerm} onChange={(e) => setQuizTerm(e.target.value as 'term1' | 'term2' | 'all')} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800">
+                          <option value="all">كل الفصول</option>
+                          <option value="term1">الفصل الأول</option>
+                          <option value="term2">الفصل الثاني</option>
+                          <option value="term3">الفصل الثالث</option>
+                        </select>
+                      </div>
+                      <div className="col-span-12 md:col-span-3 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 col-span-12">صورة الواجهة</label>
+                        <ImageUploader value={quizImageUrl} onChange={setQuizImageUrl} label="صورة الخلفية" compact={true} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-12 gap-4">
+                      <div className="col-span-12 md:col-span-3 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">تاريخ ظهور الاختبار للطلاب (اختياري)</label>
+                        <input type="date" value={quizScheduledDate ? quizScheduledDate.split("T")[0] : ""} onChange={(e) => setQuizScheduledDate(e.target.value)} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800" />
+                      </div>
+                      <div className="col-span-12 md:col-span-3 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">المدة الزمنية (بالدقائق)</label>
+                        <input type="number" min="1" value={quizTimeLimit} onChange={(e) => setQuizTimeLimit(e.target.value ? parseInt(e.target.value, 10) : "")} placeholder="مثال: 30 دقيقة" className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800" />
+                      </div>
+                      <div className="col-span-12 md:col-span-3 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">المرحلة الدراسية المستهدفة</label>
+                        <select value={quizStage} onChange={(e) => setQuizStage(e.target.value as 'primary' | 'middle' | 'high')} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-[11px] font-black outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800 font-sans">
+                          <option value="primary">ابتدائية</option>
+                          <option value="middle">متوسطة</option>
+                          <option value="high">ثانوية</option>
+                        </select>
+                      </div>
+                      <div className="col-span-12 md:col-span-3 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">حالة اختبار الطالب</label>
+                        <select value={quizStatus} onChange={(e) => setQuizStatus(e.target.value as 'draft' | 'published')} className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800">
+                          <option value="published">منشور للطلاب فوراً 🟢</option>
+                          <option value="draft">مسودة (مخفي مؤقتاً) 🟡</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <BookOpen size={16} className="text-slate-600" />
+                        <h4 className="text-xs font-black text-slate-700">الكتاب المنهجي وسند المعرفة (اختياري)</h4>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase">رابط الكتاب المنهجي (PDF)</label>
+                          <input type="url" value={quizBookUrl || ""} onChange={(e) => setQuizBookUrl(e.target.value)} placeholder="https://..." className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-medium outline-none focus:border-indigo-500" />
                         </div>
-
-                        <div className="col-span-12 md:col-span-3 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                            المادة الدراسية المستهدفة
-                          </label>
-                          <select
-                            value={quizSubjectName}
-                            onChange={(e) => {
-                              setQuizSubjectName(e.target.value);
-                              setQuizSubjectIds([]); // reset selection
-                            }}
-                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                          >
-                            <option value="">اختر المادة الدراسية...</option>
-                            {getSubjectOptions().map((name) => (
-                              <option key={name} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="col-span-12 md:col-span-2 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                            الفصل الدراسي الأكاديمي
-                          </label>
-                          <select
-                            value={quizTerm}
-                            onChange={(e) => setQuizTerm(e.target.value as "term1" | "term2" | "all")}
-                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                          >
-                            <option value="all">كل الفصول</option>
-                            <option value="term1">الفصل الأول</option>
-                            <option value="term2">الفصل الثاني</option>
-                            <option value="term3">الفصل الثالث</option>
-                          </select>
-                        </div>
-
-                        <div className="col-span-12 md:col-span-3 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 col-span-12">
-                            صورة الواجهة
-                          </label>
-                          <ImageUploader
-                            value={quizImageUrl}
-                            onChange={setQuizImageUrl}
-                            label="صورة الخلفية"
-                            compact={true}
-                          />
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase">اسم الدرس/الموضوع</label>
+                          <input type="text" value={quizLessonName || ""} onChange={(e) => setQuizLessonName(e.target.value)} placeholder="مثال: الفاعل، الجهاز الهضمي..." className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-xs font-medium outline-none focus:border-indigo-500" />
                         </div>
                       </div>
-
-                      <div className="grid grid-cols-12 gap-4">
-                        <div className="col-span-12 md:col-span-3 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
-                            تاريخ ظهور الاختبار للطلاب (اختياري)
-                          </label>
-                          <input
-                            type="date"
-                            value={quizScheduledDate ? quizScheduledDate.split('T')[0] : ""}
-                            onChange={(e) => setQuizScheduledDate(e.target.value)}
-                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                          />
-                        </div>
-                        <div className="col-span-12 md:col-span-3 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
-                            المدة الزمنية للاختبار بالدقائق (اختياري)
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={quizTimeLimit}
-                            onChange={(e) => setQuizTimeLimit(e.target.value ? parseInt(e.target.value, 10) : "")}
-                            placeholder="مثال: 30 دقيقة"
-                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                          />
-                        </div>
-                        <div className="col-span-12 md:col-span-3 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
-                            المرحلة الدراسية المستهدفة
-                          </label>
-                          <select
-                            value={quizStage}
-                            onChange={(e) => setQuizStage(e.target.value as "primary" | "middle" | "high")}
-                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-[11px] font-black outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800 font-sans"
-                          >
-                            <option value="primary">ابتدائية</option>
-                            <option value="middle">متوسطة</option>
-                            <option value="high">ثانوية</option>
-                          </select>
-                        </div>
-                        <div className="col-span-12 md:col-span-3 space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 font-sans">
-                            حالة اختبار الطالب
-                          </label>
-                          <select
-                            value={quizStatus}
-                            onChange={(e) => setQuizStatus(e.target.value as "draft" | "published")}
-                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-800"
-                          >
-                            <option value="published">منشور للطلاب فوراً 🟢</option>
-                            <option value="draft">مسودة (مخفي مؤقتاً) 🟡</option>
-                          </select>
+                    </div>
+                    {quizSubjectName && (
+                      <div className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col gap-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">الصفوف الدراسية المستهدفة (يمكن اختيار أكثر من صف)</label>
+                        <div className="flex flex-wrap gap-2">
+                          {data.subjects.filter(s => !s.isArchived && s.name === quizSubjectName).map(subject => {
+                            const isSelected = quizSubjectIds.includes(subject.id);
+                            const grade = data.grades.find(g => g.id === subject.gradeId);
+                            return (
+                              <button key={subject.id} onClick={() => { if (isSelected) { setQuizSubjectIds(quizSubjectIds.filter(id => id !== subject.id)); } else { setQuizSubjectIds([...quizSubjectIds, subject.id]); } }} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'}`}>
+                                {grade ? grade.name : 'درجة غير معروفة'}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-
-                      {/* Section 1.5: Reference Book Connection */}
-                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <BookOpen size={16} className="text-slate-600" />
-                          <h4 className="text-xs font-black text-slate-700">الكتاب المنهجي وسند المعرفة (اختياري)</h4>
-                        </div>
-                      </div>
-
-                      {quizSubjectName && (
-                        <div className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col gap-2">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                            الصفوف الدراسية المستهدفة (يمكن اختيار أكثر من صف)
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {data.subjects
-                              .filter(
-                                (s) =>
-                                  !s.isArchived &&
-                                  s.name === quizSubjectName,
-                              )
-                              .map((subject) => {
-                                const isSelected = quizSubjectIds.includes(
-                                  subject.id,
-                                );
-                                const grade = data.grades.find(
-                                  (g) => g.id === subject.gradeId,
-                                );
-                                return (
-                                  <button
-                                    key={subject.id}
-                                    onClick={() => {
-                                      if (isSelected) {
-                                        setQuizSubjectIds(
-                                          quizSubjectIds.filter(
-                                            (id) => id !== subject.id,
-                                          ),
-                                        );
-                                      } else {
-                                        setQuizSubjectIds([
-                                          ...quizSubjectIds,
-                                          subject.id,
-                                        ]);
-                                      }
-                                    }}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
-                                      isSelected
-                                        ? "border-indigo-600 bg-indigo-50 text-indigo-700"
-                                        : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200"
-                                    }`}
-                                  >
-                                    <span>{grade?.name || "بدون صف"}</span>
-                                    {isSelected && <Check size={12} className="text-indigo-600" />}
-                                  </button>
-                                );
-                              })}
-                              {data.subjects.filter(
-                                (s) =>
-                                  !s.isArchived && s.name === quizSubjectName,
-                              ).length === 0 && (
-                                <p className="text-xs text-red-500 font-bold bg-red-50 p-2 rounded-lg">
-                                  لا توجد صفوف مرتبطة بهذه المادة حالياً.
-                                </p>
-                              )}
+                    )}
+                    <div className="pt-6 border-t border-slate-100 flex flex-col lg:flex-row gap-8">
+                      <div className="w-full lg:w-80 space-y-6">
+                        <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 space-y-6">
+                          <div className="space-y-1">
+                            <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Sparkles size={16} className="text-indigo-600" /> توليد الأسئلة الذكي</h3>
+                            <p className="text-[10px] font-bold text-slate-400">قم بتوليد الأسئلة فوراً عبر الذكاء الاصطناعي</p>
                           </div>
-                        </div>
-                      )}
-
-                      <div className="flex flex-col lg:flex-row gap-6 mt-5">
-                            {/* AI Generation Sidebar */}
-                            <div className="lg:w-1/4 shrink-0 bg-slate-50 p-6 rounded-[24px] border border-slate-100 flex flex-col gap-4 sticky top-8 h-fit">
-                              <h3 className="text-sm font-black text-slate-800">أدوات توليد الأسئلة</h3>
-                              <div className="flex flex-col bg-white p-1 rounded-2xl border border-slate-200">
-                                <button type="button" onClick={() => setAiMode("lesson")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'lesson' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>توليد باسم الدرس</button>
-                                <button type="button" onClick={() => setAiMode("custom")} className={`py-2 px-4 rounded-xl font-black text-xs ${aiMode === 'custom' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50 text-right'}`}>توليد حر</button>
-                              </div>
-                              <div className="space-y-4">
-                                {aiMode === "lesson" && (
-                                  <div className="space-y-4 bg-white p-4 rounded-2xl border border-slate-100">
-                                    <div className="space-y-2">
-                                      <label className="text-[10px] font-black text-slate-400 uppercase">الصف الدراسي</label>
-                                      <select value={aiSelectedGradeId} onChange={(e) => setAiSelectedGradeId(e.target.value)} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
-                                        <option value="">اختر الصف...</option>
-                                        {data.grades.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                                      </select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <label className="text-[10px] font-black text-slate-400 uppercase">المادة الدراسية</label>
-                                      <select value={aiSelectedSubject} onChange={(e) => setAiSelectedSubject(e.target.value)} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
-                                        <option value="">اختر المادة...</option>
-                                        {getSubjectOptions().map(name => <option key={name} value={name}>{name}</option>)}
-                                      </select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <label className="text-[10px] font-black text-slate-400 uppercase">اسم الدرس</label>
-                                      <input type="text" value={aiLessonName} onChange={(e) => setAiLessonName(e.target.value)} disabled={aiIsGenerating} placeholder="مثال: الفاعل" className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500" />
-                                    </div>
-                                  </div>
-                                )}
-
-                                {aiMode === "custom" && (
-                                  <div className="space-y-2 bg-white p-4 rounded-2xl border border-slate-100">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase">وصف الأسئلة</label>
-                                    <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} disabled={aiIsGenerating} placeholder="مثال: أسئلة في لغتي الجميلة..." className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-2 text-xs font-bold outline-none focus:border-indigo-500 resize-none" />
-                                  </div>
-                                )}
+                          <div className="flex bg-slate-100 p-1 rounded-2xl">
+                            <button type="button" onClick={() => setAiMode("lesson")} className={`flex-1 py-1.5 px-3 rounded-xl font-black text-[10px] transition-all ${aiMode === 'lesson' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>دروس المنهج</button>
+                            <button type="button" onClick={() => setAiMode("custom")} className={`flex-1 py-1.5 px-3 rounded-xl font-black text-[10px] transition-all ${aiMode === 'custom' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>توليد حر</button>
+                          </div>
+                          <div className="space-y-4">
+                            {aiMode === "lesson" && (
+                              <div className="space-y-4 bg-white p-4 rounded-2xl border border-slate-100">
                                 <div className="space-y-2">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase">عدد الأسئلة</label>
-                                  <div className="flex gap-2">
-                                    {[3, 5, 10].map(count => (
-                                      <button key={count} type="button" disabled={aiIsGenerating} onClick={() => setAiQuestionCount(count)} className={`flex-1 py-1.5 rounded-xl text-xs font-black transition-all ${aiQuestionCount === count ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{count}</button>
-                                    ))}
-                                  </div>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase">الصف الدراسي</label>
+                                  <select value={aiSelectedGradeId} onChange={(e) => setAiSelectedGradeId(e.target.value)} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
+                                    <option value="">اختر الصف...</option>
+                                    {data.grades.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                  </select>
                                 </div>
-                                <button type="button" onClick={handleGenerateQuestionsWithAI} disabled={aiIsGenerating} className={`w-full h-11 rounded-xl font-black text-xs flex justify-center items-center gap-2 transition-all ${aiIsGenerating ? 'bg-indigo-400 text-white cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.98]'}`}>
-                                  {aiIsGenerating ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> جاري التوليد ...</> : <><Sparkles size={14} /> توليد الأسئلة الذكية</>}
-                                </button>
-                                {aiError && <div className="text-xs text-rose-500 font-bold p-3 bg-rose-50 rounded-xl flex items-start gap-2"><AlertCircle size={14} className="shrink-0 mt-0.5" /><span>{aiError}</span></div>}
-                                {aiSuccess && <div className="text-xs text-emerald-500 font-bold p-3 bg-emerald-50 rounded-xl flex items-start gap-2"><CheckCircle2 size={14} className="shrink-0 mt-0.5"/><span>{aiSuccess}</span></div>}
+                                <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase">المادة الدراسية</label>
+                                  <select value={aiSelectedSubject} onChange={(e) => setAiSelectedSubject(e.target.value)} disabled={aiIsGenerating} className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500">
+                                    <option value="">اختر المادة...</option>
+                                    {getSubjectOptions().map(name => <option key={name} value={name}>{name}</option>)}
+                                  </select>
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase">اسم الدرس</label>
+                                  <input type="text" value={aiLessonName} onChange={(e) => setAiLessonName(e.target.value)} disabled={aiIsGenerating} placeholder="مثال: الفاعل" className="w-full h-10 bg-slate-50 border border-slate-100 rounded-xl px-2 text-xs font-bold outline-none focus:border-indigo-500" />
+                                </div>
+                              </div>
+                            )}
+                            {aiMode === "custom" && (
+                              <div className="space-y-2 bg-white p-4 rounded-2xl border border-slate-100">
+                                <label className="text-[10px] font-black text-slate-400 uppercase">وصف الأسئلة</label>
+                                <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} disabled={aiIsGenerating} placeholder="مثال: أسئلة في لغتي الجميلة..." className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-2 text-xs font-bold outline-none focus:border-indigo-500 resize-none" />
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase">عدد الأسئلة</label>
+                              <div className="flex gap-2 items-center">
+                                <input type="number" min="1" max="50" value={aiQuestionCount} onChange={(e) => setAiQuestionCount(parseInt(e.target.value) || 1)} disabled={aiIsGenerating} className="w-20 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs font-black outline-none focus:border-indigo-500 disabled:opacity-50" />
+                                <div className="flex gap-1 flex-1">
+                                  {[3, 5, 10, 20].map(count => (
+                                    <button key={count} title={`تحديد ${count} أسئلة`} type="button" disabled={aiIsGenerating} onClick={() => setAiQuestionCount(count)} className={`flex-1 py-1.5 rounded-xl text-xs font-black transition-all ${aiQuestionCount === count ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50'}`}>
+                                      {count}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             </div>
-
-                            {/* Question Area (Center/Right) */}
-                            <div className="flex-1 space-y-6">
-                              <h3 className="text-lg font-black text-slate-800">الأسئلة ({quizQuestions.length})</h3>
-                              <div className="grid grid-cols-1 gap-6">
-                                  {quizQuestions.map((q, qIndex) => (
-                                    <div
-                                      key={q.id}
-                                      className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 flex flex-col gap-6 relative transition-all"
-                                    >
-                                      <div className="absolute top-0 right-0 w-10 h-10 bg-indigo-50 rounded-bl-3xl flex items-center justify-center font-black text-xs text-indigo-600">
-                                        {qIndex + 1}
-                                      </div>
-                                      <div className="space-y-4 pt-4">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase px-1">
-                                          نص السؤال
-                                        </label>
-                                        <textarea
-                                          value={q.text}
-                                          onChange={(e) => {
-                                            const n = [...quizQuestions];
-                                            n[qIndex].text = e.target.value;
-                                            setQuizQuestions(n);
-                                          }}
-                                          placeholder="بداية نص السؤال..."
-                                          className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm resize-none outline-none focus:border-indigo-300 focus:bg-white transition-all shadow-sm"
-                                        />
-                                        <ImageUploader
-                                          value={q.imageUrl || ""}
-                                          onChange={(val) => {
-                                            const n = [...quizQuestions];
-                                            n[qIndex].imageUrl = val;
-                                            setQuizQuestions(n);
-                                          }}
-                                          label="صورة مرتبطة بالسؤال"
-                                          iconOnly={true}
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setQuizQuestions(
-                                              quizQuestions.filter(
-                                                (_, i) => i !== qIndex,
-                                              ),
-                                            )
-                                          }
-                                          className="h-10 px-4 bg-rose-50 text-rose-500 rounded-xl font-black text-xs flex items-center justify-center gap-2 hover:bg-rose-500 hover:text-white transition-all cursor-pointer"
-                                        >
-                                          <Trash2 size={14} /> حذف السؤال
-                                        </button>
-                                      </div>
-
-                                      <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase px-1">
-                                          الخيارات (اختر الإجابة الصحيحة)
-                                        </label>
-                                        <div className="grid grid-cols-1 gap-2">
-                                          {q.options.map((opt, optIdx) => (
-                                            <div
-                                              key={optIdx}
-                                              className={`p-2 rounded-xl border-2 flex flex-col md:flex-row items-start md:items-center gap-3 transition-all ${q.correctAnswerIndex === optIdx ? "border-emerald-400 bg-emerald-50/50" : "border-slate-100 bg-white hover:border-indigo-100"}`}
-                                            >
-                                              <div className="flex items-center gap-2 w-full">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    const n = [...quizQuestions];
-                                                    n[qIndex].correctAnswerIndex =
-                                                      optIdx;
-                                                    setQuizQuestions(n);
-                                                  }}
-                                                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0 font-black text-[12px] cursor-pointer ${q.correctAnswerIndex === optIdx ? "bg-emerald-500 text-white shadow-md" : "bg-slate-100 text-slate-500 hover:bg-emerald-100 hover:text-emerald-600"}`}
-                                                >
-                                                  {q.correctAnswerIndex === optIdx
-                                                    ? "✓"
-                                                    : optIdx + 1}
-                                                </button>
-                                                <input
-                                                  type="text"
-                                                  value={opt}
-                                                  onChange={(e) => {
-                                                    const n = [...quizQuestions];
-                                                    n[qIndex].options[optIdx] =
-                                                      e.target.value;
-                                                    setQuizQuestions(n);
-                                                  }}
-                                                  placeholder={`الخيار ${optIdx + 1}`}
-                                                  className="flex-1 bg-transparent font-bold text-sm text-slate-800 outline-none h-10 px-2"
-                                                />
-                                                <ImageUploader
-                                                  value={q.optionImages?.[optIdx] || ""}
-                                                  onChange={(val) => {
-                                                    const n = [...quizQuestions];
-                                                    if (!n[qIndex].optionImages)
-                                                      n[qIndex].optionImages = ["", "", "", ""];
-                                                    n[qIndex].optionImages![optIdx] = val;
-                                                    setQuizQuestions(n);
-                                                  }}
-                                                  iconOnly={true}
-                                                  label="صورة للخيار"
-                                                />
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
+                            <button type="button" onClick={handleGenerateQuestionsWithAI} disabled={aiIsGenerating} className={`w-full h-11 rounded-xl font-black text-xs flex justify-center items-center gap-2 transition-all ${aiIsGenerating ? 'bg-indigo-400 text-white cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.98]'}`}>
+                              {aiIsGenerating ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> جاري التوليد ...</> : <><Sparkles size={14} /> توليد الأسئلة الذكية</>}
+                            </button>
+                            {aiError && <div className="text-xs text-rose-500 font-bold p-3 bg-rose-50 rounded-xl flex items-start gap-2"><AlertCircle size={14} className="shrink-0 mt-0.5" /><span>{aiError}</span></div>}
+                            {aiSuccess && <div className="text-xs text-emerald-500 font-bold p-3 bg-emerald-50 rounded-xl flex items-start gap-2"><CheckCircle2 size={14} className="shrink-0 mt-0.5" /><span>{aiSuccess}</span></div>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-1 space-y-6">
+                        <h3 className="text-lg font-black text-slate-800">الأسئلة ({quizQuestions.length})</h3>
+                        <div className="grid grid-cols-1 gap-6">
+                          {quizQuestions.map((q, qIndex) => (
+                            <div key={q.id} className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 flex flex-col gap-6 relative transition-all">
+                              <div className="absolute top-0 right-0 w-10 h-10 bg-indigo-50 rounded-bl-3xl flex items-center justify-center font-black text-xs text-indigo-600">{qIndex + 1}</div>
+                              <div className="space-y-4 pt-4">
+                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">نص السؤال</label>
+                                <textarea value={q.text} onChange={(e) => { const n = [...quizQuestions]; n[qIndex].text = e.target.value; setQuizQuestions(n); }} placeholder="بداية نص السؤال..." className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm resize-none outline-none focus:border-indigo-300 focus:bg-white transition-all shadow-sm" />
+                                <ImageUploader value={q.imageUrl || ""} onChange={(val) => { const n = [...quizQuestions]; n[qIndex].imageUrl = val; setQuizQuestions(n); }} label="صورة مرتبطة بالسؤال" iconOnly={true} />
+                                <button type="button" onClick={() => setQuizQuestions(quizQuestions.filter((_, i) => i !== qIndex))} className="h-10 px-4 bg-rose-50 text-rose-500 rounded-xl font-black text-xs flex items-center justify-center gap-2 hover:bg-rose-500 hover:text-white transition-all cursor-pointer"><Trash2 size={14} /> حذف السؤال</button>
+                              </div>
+                              <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">الخيارات (اختر الإجابة الصحيحة)</label>
+                                <div className="grid grid-cols-1 gap-2">
+                                  {q.options.map((opt, optIdx) => (
+                                    <div key={optIdx} className={`p-2 rounded-xl border-2 flex flex-col md:flex-row items-start md:items-center gap-3 transition-all ${q.correctAnswerIndex === optIdx ? 'border-emerald-400 bg-emerald-50/50' : 'border-slate-100 bg-white hover:border-indigo-100'}`}>
+                                      <div className="flex items-center gap-2 w-full">
+                                        <button type="button" onClick={() => { const n = [...quizQuestions]; n[qIndex].correctAnswerIndex = optIdx; setQuizQuestions(n); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0 font-black text-[12px] cursor-pointer ${q.correctAnswerIndex === optIdx ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-emerald-100 hover:text-emerald-600'}`}>{q.correctAnswerIndex === optIdx ? '✓' : optIdx + 1}</button>
+                                        <input type="text" value={opt} onChange={(e) => { const n = [...quizQuestions]; n[qIndex].options[optIdx] = e.target.value; setQuizQuestions(n); }} placeholder={`الخيار ${optIdx + 1}`} className="flex-1 bg-transparent font-bold text-sm text-slate-800 outline-none h-10 px-2" />
+                                        <ImageUploader value={q.optionImages?.[optIdx] || ""} onChange={(val) => { const n = [...quizQuestions]; if (!n[qIndex].optionImages) n[qIndex].optionImages = ["", "", "", ""]; n[qIndex].optionImages![optIdx] = val; setQuizQuestions(n); }} iconOnly={true} label="صورة للخيار" />
                                       </div>
                                     </div>
                                   ))}
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setQuizQuestions([
-                                        ...quizQuestions,
-                                        {
-                                          id: `q_${Date.now()}_${Math.random()}`,
-                                          text: "",
-                                          options: ["", "", "", ""],
-                                          correctAnswerIndex: 0,
-                                          imageUrl: "",
-                                          optionImages: ["", "", "", ""],
-                                        },
-                                      ]);
-                                    }}
-                                    className="w-full py-8 border-2 border-dashed border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-500 rounded-[24px] font-black flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"
-                                  >
-                                    <PlusCircle size={32} />
-                                    <span>أضف سؤال جديد</span>
-                                  </button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-
-                      {/* Master Publish Button */}
-                      <div className="pt-8 border-t border-slate-100">
-                        <div className="bg-slate-50/50 rounded-[48px] p-2 ring-1 ring-slate-100/50 shadow-xl flex flex-col md:flex-row gap-2">
-                          <button
-                            onClick={handleSaveQuiz}
-                            disabled={isProcessing}
-                            className={`flex-[3] min-h-[5rem] md:min-h-[6rem] py-6 rounded-[36px] font-black text-xl flex flex-col md:flex-row items-center justify-center gap-3 transition-all active:scale-[0.98] ${!quizTitle || quizSubjectIds.length === 0 || quizQuestions.length === 0 ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" : "bg-slate-900 text-white hover:bg-indigo-600 hover:shadow-indigo-500/20 hover:shadow-xl"}`}
-                          >
-                            {isProcessing ? (
-                              <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin" />
-                            ) : (
-                              <>
-                                <Save
-                                  size={28}
-                                  className={
-                                    !quizTitle ||
-                                    quizSubjectIds.length === 0 ||
-                                    quizQuestions.length === 0
-                                      ? "text-slate-300"
-                                      : "text-yellow-400"
-                                  }
-                                />
-                                <span className="text-center leading-tight">
-                                  {editingId
-                                    ? "حفظ التعديلات النهائية"
-                                    : "اعتماد وحفظ الاختبار في البنك"}
-                                </span>
-                              </>
-                            )}
-                          </button>
-                          
-                          <button
-                            type="button"
-                            onClick={resetForms}
-                            className="flex-[1] min-h-[5rem] md:min-h-[6rem] py-6 rounded-[36px] bg-white border-2 border-slate-200 text-slate-500 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 font-black text-lg flex flex-col md:flex-row items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                          >
-                            <X size={24} />
-                            <span>إلغاء الأمر</span>
-                          </button>
+                          ))}
+                          <button type="button" onClick={() => { setQuizQuestions([...quizQuestions, { id: `q_${Date.now()}_${Math.random()}`, text: "", options: ["", "", "", ""], correctAnswerIndex: 0, imageUrl: "", optionImages: ["", "", "", ""] }]); }} className="w-full py-8 border-2 border-dashed border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-500 rounded-[24px] font-black flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"><PlusCircle size={32} /> <span>أضف سؤال جديد</span></button>
                         </div>
                       </div>
                     </div>
                   </div>
+                  <div className="pt-8 border-t border-slate-100">
+                    <div className="bg-slate-50/50 rounded-[48px] p-2 ring-1 ring-slate-100/50 shadow-xl flex flex-col md:flex-row gap-2">
+                      <button onClick={handleSaveQuiz} disabled={isProcessing} className={`flex-[3] min-h-[5rem] md:min-h-[6rem] py-6 rounded-[36px] font-black text-xl flex flex-col md:flex-row items-center justify-center gap-3 transition-all active:scale-[0.98] ${!quizTitle || quizSubjectIds.length === 0 || quizQuestions.length === 0 ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" : "bg-slate-900 text-white hover:bg-indigo-600 hover:shadow-indigo-500/20 hover:shadow-xl"}`}>
+                        {isProcessing ? (
+                          <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <Save size={28} className={!quizTitle || quizSubjectIds.length === 0 || quizQuestions.length === 0 ? "text-slate-300" : "text-yellow-400"} />
+                            <span className="text-center leading-tight">{editingId ? "حفظ التعديلات النهائية" : "اعتماد وحفظ الاختبار في البنك"}</span>
+                          </>
+                        )}
+                      </button>
+                      <button type="button" onClick={resetForms} className="flex-[1] min-h-[5rem] md:min-h-[6rem] py-6 rounded-[36px] bg-white border-2 border-slate-200 text-slate-500 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 font-black text-lg flex flex-col md:flex-row items-center justify-center gap-2 transition-all active:scale-[0.98]">
+                        <X size={24} />
+                        <span>إلغاء الأمر</span>
+                      </button>
+                    </div>
+                  </div>
 
-                  {/* Existing Quizzes */}
+                   {/* Existing Quizzes */}
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pt-6 border-t border-slate-100">
                     <h4 className="font-black text-slate-800">
                       الاختبارات الحالية
@@ -4191,7 +3946,8 @@ export function Management({
                     })}
                   </div>
                 </div>
-              </SectionContainer>
+              </div>
+            </SectionContainer>
             )}
 
             {activeTab === "system_settings" && (

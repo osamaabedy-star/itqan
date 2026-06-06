@@ -74,6 +74,8 @@ export interface Quiz {
   term?: 'term1' | 'term2' | 'full';
   timeLimit?: number; // In minutes
   scheduledDate?: string; // ISO date string
+  bookUrl?: string;
+  lessonName?: string;
   updatedAt?: any;
   createdAt?: any;
 }
@@ -154,6 +156,7 @@ export interface Visit {
 export interface QuizResult {
   id?: string;
   studentId: string;
+  nationalId?: string;
   quizId: string;
   title?: string;
   score: number; // Percentage

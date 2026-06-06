@@ -230,13 +230,18 @@ export const firestoreService = {
 
   async saveQuizResult(result: any) {
     const id = `${result.studentId}_${result.quizId}`;
+    
+    const cleanResult = { ...result };
+    Object.keys(cleanResult).forEach(key => cleanResult[key] === undefined && delete cleanResult[key]);
+
     try {
       await setDoc(doc(db, 'quizResults', id), {
-        ...result,
+        ...cleanResult,
         updatedAt: serverTimestamp()
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `quizResults/${id}`);
+      throw error;
     }
   },
 

@@ -8,21 +8,29 @@ export const MissingEvaluationsCard = ({
   evaluations,
   academicYear,
   filterTeacherId,
+  filterGradeId,
+  filterSubjectName,
+  filterTerm,
   onStudentClick
 }: {
   data: AppData;
   evaluations: Evaluations;
   academicYear: string;
   filterTeacherId?: string;
+  filterGradeId?: string;
+  filterSubjectName?: string;
+  filterTerm?: 'term1' | 'term2' | 'full';
   onStudentClick?: (studentId: string) => void;
 }) => {
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
 
   const missingData = useMemo(() => {
-    // Determine which subjects to consider based on teacher filter
+    // Determine which subjects to consider based on teacher and subject/grade filters
     const relevantSubjects = data.subjects.filter(s => {
       if (s.isArchived) return false;
       if (filterTeacherId && s.teacherId !== filterTeacherId && !s.teacherIds?.includes(filterTeacherId)) return false;
+      if (filterGradeId && s.gradeId !== filterGradeId) return false;
+      if (filterSubjectName && s.name !== filterSubjectName) return false;
       return true;
     });
 
@@ -36,6 +44,7 @@ export const MissingEvaluationsCard = ({
 
     data.classes.forEach(cls => {
       if (cls.isArchived) return;
+      if (filterGradeId && cls.gradeId !== filterGradeId) return;
       
       const grade = data.grades.find(g => g.id === cls.gradeId);
       const clsSubjects = relevantSubjects.filter(sub => sub.gradeId === cls.gradeId && (!sub.classIds || sub.classIds.includes(cls.id) || sub.classId === cls.id));
@@ -54,7 +63,14 @@ export const MissingEvaluationsCard = ({
       let classMissingCount = 0;
 
       clsSubjects.forEach(sub => {
-        const subSkills = data.skills.filter(sk => !sk.isArchived && (sk.subjectId === sub.id || (sk.subjectName === sub.name && sk.gradeId === sub.gradeId)));
+        const subSkills = data.skills.filter(sk => {
+            if (sk.isArchived) return false;
+            const isMatch = sk.subjectId === sub.id || (sk.subjectName === sub.name && sk.gradeId === sub.gradeId);
+            if (!isMatch) return false;
+            // Filter by Term if specified
+            if (filterTerm && filterTerm !== 'full' && sk.term && sk.term !== filterTerm) return false;
+            return true;
+        });
         
         subSkills.forEach(sk => {
           clsStudents.forEach(st => {

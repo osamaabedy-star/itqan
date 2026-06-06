@@ -113,6 +113,7 @@ export function QuizPlayer({
       if (student) {
         firestoreService.saveQuizResult({
           studentId: student.id,
+          nationalId: student.nationalId,
           quizId: quiz.id,
           title: quiz.title,
           score,
@@ -121,6 +122,7 @@ export function QuizPlayer({
           subjectIds: quiz.subjectIds
         }).catch(err => {
           console.error("Error saving quiz result:", err);
+          alert('حدث خطأ أثناء حفظ الاختبار: ' + String(err));
         });
 
         // INTELLIGENT LINK: If score >= 85%, auto-master skills for this subject

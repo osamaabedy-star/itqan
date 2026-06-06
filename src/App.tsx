@@ -90,6 +90,7 @@ import { TeacherProfile } from './components/TeacherProfile';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { SupervisorDashboard } from './components/SupervisorDashboard';
 import { normalizeNumerals } from './lib/stringUtils';
+import { isQuizSolved, normalizeId } from './utils/quizUtils';
 
 import { ProfessionalReports } from './components/ProfessionalReports';
 import { QuizReport } from './components/QuizReport';
@@ -112,7 +113,8 @@ export default function App() {
       }
     } catch (e) {}
     return 'dashboard';
-  }); // dashboard, subjects, skills, students, evaluation, reports, student-report, management, quiz, baseline-selection, baseline-session, quick-matrix, student-profile, quiz-login
+  });
+  const [viewHistory, setViewHistory] = useState<string[]>([]);
   const [rawAppData, setAppData] = useState<AppData>(INITIAL_DATA);
 
   const appData = useMemo(() => {
@@ -475,6 +477,7 @@ export default function App() {
       }
 
       const input = normalizeNumerals(loginIdInput.trim());
+      const inputWithSPrefix = input.toLowerCase().startsWith('s') ? input.toLowerCase() : 's' + input.toLowerCase();
 
       // 1. Check if the ID belongs to an external profile (Teacher / Supervisor)
       try {
@@ -508,8 +511,9 @@ export default function App() {
       
       // Find matching student by National ID, ID, or Name
       const student = allStudents.find(s => 
-        (s.nationalId && s.nationalId.trim() === input) ||
+        (s.nationalId && (s.nationalId.trim().toLowerCase() === input.toLowerCase() || s.nationalId.trim().toLowerCase() === inputWithSPrefix)) ||
         s.id.toLowerCase() === input.toLowerCase() || 
+        s.id.toLowerCase() === inputWithSPrefix ||
         s.name.trim().toLowerCase() === input.toLowerCase() ||
         s.name.trim().replace(/\s+/g, ' ').toLowerCase() === input.replace(/\s+/g, ' ').toLowerCase()
       );
@@ -560,6 +564,13 @@ export default function App() {
   }, [view, selectedClass, selectedSubject, selectedSkill, selectedStudent, selectedTeacher, selectedQuiz]);
 
   const handleGoBack = () => {
+    if (viewHistory.length > 0) {
+      const prev = viewHistory[viewHistory.length - 1];
+      setViewHistory(viewHistory.slice(0, -1));
+      setView(prev);
+      return;
+    }
+
     switch (view) {
       case 'subjects':
         setView('dashboard');
@@ -595,6 +606,9 @@ export default function App() {
   };
 
   const handleNavigateToView = (newView: string, resetData?: boolean) => {
+    if (newView !== view) {
+      setViewHistory(prev => [...prev, view]);
+    }
     setView(newView);
     if (resetData) {
         if (newView === 'dashboard') {
@@ -1064,11 +1078,11 @@ export default function App() {
               evaluations={evaluations}
               academicYear={academicYear}
               activeTerm={activeTerm}
-              onNavigate={setView}
+              onNavigate={handleNavigateToView}
               onSelectClass={setSelectedClass}
               onSelectStudent={setSelectedStudent}
-              onSelectTeacher={(t) => { setSelectedTeacher(t); setPreviousTeacherView('dashboard'); setView('teacher-profile'); }}
-              onSelectQuiz={(q, st) => { setSelectedQuiz(q); setSelectedStudent(st); setView(st ? 'quiz' : 'quiz-report'); }}
+              onSelectTeacher={(t) => { setSelectedTeacher(t); setPreviousTeacherView('dashboard'); handleNavigateToView('teacher-profile'); }}
+              onSelectQuiz={(q, st) => { setSelectedQuiz(q); setSelectedStudent(st); handleNavigateToView(st ? 'quiz' : 'quiz-report'); }}
               calculatePerformance={calculatePerformance}
               filterTeacherId={globalFilterTeacherId}
               onFilterTeacherChange={setGlobalFilterTeacherId}
@@ -1147,7 +1161,7 @@ export default function App() {
                     onClick={() => {
                       setStudentSession(null);
                       setShowStudentQuizPortal(false);
-                      setView('login');
+                      handleNavigateToView('login');
                     }}
                     className="px-4 h-9 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all mr-auto sm:mr-0 cursor-pointer"
                   >
@@ -1189,9 +1203,8 @@ export default function App() {
                       const availableQuizzes = appData.quizzes.filter(q => {
                         if (q.isArchived || q.status !== 'published') return false;
                         
-                        // ONLY AVAILABLE tests (uncompleted) should show here based on user intent
-                        const result = appData.quizResults?.find(r => r.studentId === studentSession.id && r.quizId === q.id);
-                        if (result) return false;
+                        // Robust check for already solved quizzes using shared utility
+                        if (isQuizSolved(studentSession, q, appData.quizResults)) return false;
 
                         // Check if scheduled date is in the future
                         if (q.scheduledDate) {
@@ -1264,7 +1277,7 @@ export default function App() {
                                   <button
                                     onClick={() => {
                                       setSelectedQuiz(quiz);
-                                      setView('quiz');
+                                      handleNavigateToView('quiz');
                                     }}
                                     className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] sm:text-xs font-black shadow-md transition-all active:scale-95 cursor-pointer"
                                   >
@@ -1282,7 +1295,14 @@ export default function App() {
                   {/* 2. Chronological Quiz Reports Tab with progress line/area chart */}
                   {studentPortalTab === 'quiz-reports' && (
                     (() => {
-                      const solvedQuizzes = (appData.quizResults?.filter(r => r.studentId === studentSession?.id) || [])
+                      const solvedQuizzes = (appData.quizResults || []).filter(r => {
+                          const sId = normalizeId(studentSession?.id);
+                          const sNatId = normalizeId(studentSession?.nationalId);
+                          const rStudentId = normalizeId(r.studentId);
+                          const rNationalId = normalizeId(r.nationalId);
+                          
+                          return rStudentId === sId || (sNatId && rStudentId === sNatId) || (sNatId && rNationalId === sNatId);
+                        })
                         .map(res => {
                           const quiz = appData.quizzes.find(q => q.id === res.quizId);
                           const dateObj = res.updatedAt && res.updatedAt.toDate 
@@ -1414,36 +1434,52 @@ export default function App() {
                                         <span className="text-[9px] text-slate-400 font-bold">بانتظار تقديم أول اختبار</span>
                                       </div>
                                     ) : (
-                                      <div className="w-full h-20">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                          <AreaChart data={subSortedChartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                                            <defs>
-                                              <linearGradient id={`colorScore-${sub.id}`} x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor={sub.color} stopOpacity={0.35}/>
-                                                <stop offset="95%" stopColor={sub.color} stopOpacity={0}/>
-                                              </linearGradient>
-                                            </defs>
-                                            <Tooltip 
-                                              content={({ active, payload }) => {
-                                                if (active && payload && payload.length) {
-                                                  const d = payload[0].payload;
-                                                  return (
-                                                    <div className="bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800 text-right space-y-0.5 text-[9px] shadow-lg max-w-[140px]" dir="rtl">
-                                                      <p className="font-extrabold text-white truncate">{d.title}</p>
-                                                      <p className="text-slate-400 text-[8px] font-medium font-sans">{d.dateStr}</p>
-                                                      <p className="font-bold flex items-center gap-1 mt-0.5" style={{ color: sub.color }}>
-                                                        <span>الدرجة:</span>
-                                                        <span className="text-white font-black text-[10px]">{d.score}%</span>
-                                                      </p>
-                                                    </div>
-                                                  );
-                                                }
-                                                return null;
-                                              }}
-                                            />
-                                            <Area type="monotone" dataKey="score" stroke={sub.color} strokeWidth={2.5} fillOpacity={1} fill={`url(#colorScore-${sub.id})`} dot={{ r: 3, stroke: sub.color, strokeWidth: 1.5, fill: '#fff' }} />
-                                          </AreaChart>
-                                        </ResponsiveContainer>
+                                      <div className="w-full flex-1 flex flex-col mt-2">
+                                        <div className="w-full h-20">
+                                          <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={subSortedChartData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                                              <defs>
+                                                <linearGradient id={`colorScore-${sub.id}`} x1="0" y1="0" x2="0" y2="1">
+                                                  <stop offset="5%" stopColor={sub.color} stopOpacity={0.35}/>
+                                                  <stop offset="95%" stopColor={sub.color} stopOpacity={0}/>
+                                                </linearGradient>
+                                              </defs>
+                                              <XAxis 
+                                                dataKey="dateStr" 
+                                                reversed={true} 
+                                                axisLine={false} 
+                                                tickLine={false} 
+                                                tick={{ fontSize: 8, fill: '#64748b', fontWeight: 'bold' }} 
+                                                dy={5}
+                                              />
+                                              <YAxis domain={[0, 100]} hide={true} />
+                                              <Tooltip 
+                                                content={({ active, payload }) => {
+                                                  if (active && payload && payload.length) {
+                                                    const d = payload[0].payload;
+                                                    return (
+                                                      <div className="bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800 text-right space-y-0.5 text-[9px] shadow-lg max-w-[140px]" dir="rtl">
+                                                        <p className="font-extrabold text-white truncate">{d.title}</p>
+                                                        <p className="text-slate-400 text-[8px] font-medium font-sans">{d.dateStr}</p>
+                                                        <p className="font-bold flex items-center gap-1 mt-0.5" style={{ color: sub.color }}>
+                                                          <span>الدرجة:</span>
+                                                          <span className="text-white font-black text-[10px]">{d.score}%</span>
+                                                        </p>
+                                                      </div>
+                                                    );
+                                                  }
+                                                  return null;
+                                                }}
+                                              />
+                                              <Area type="monotone" dataKey="score" stroke={sub.color} strokeWidth={2.5} fillOpacity={1} fill={`url(#colorScore-${sub.id})`} dot={{ r: 3, stroke: sub.color, strokeWidth: 1.5, fill: '#fff' }} />
+                                            </AreaChart>
+                                          </ResponsiveContainer>
+                                        </div>
+                                        <div className="text-[8px] text-slate-300 font-bold flex justify-between px-2 mt-1 items-center">
+                                          <span>الأحدث</span>
+                                          <div className="flex-1 border-b border-dashed border-slate-200 mx-2"></div>
+                                          <span>الأقدم</span>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
@@ -1716,10 +1752,10 @@ export default function App() {
             <Management 
               data={appData} 
               evaluations={evaluations} 
-              onClose={() => setView('dashboard')} 
+              onClose={() => handleNavigateToView('dashboard')} 
               filterTeacherId={globalFilterTeacherId}
               onFilterTeacherChange={setGlobalFilterTeacherId}
-              onSelectStudent={(st) => { setSelectedStudent(st); setView('student-profile'); }}
+              onSelectStudent={(st) => { setSelectedStudent(st); handleNavigateToView('student-profile'); }}
               academicYear={academicYear}
             />
           )}
@@ -1730,10 +1766,10 @@ export default function App() {
                data={appData}
                filterTeacherId={globalFilterTeacherId}
                onClose={() => {
-                 setView(selectedTeacher ? 'teacher-profile' : 'dashboard');
+                 handleNavigateToView(selectedTeacher ? 'teacher-profile' : 'dashboard');
                  setSelectedQuiz(null);
                }}
-               onPreviewQuiz={() => setView('quiz')}
+               onPreviewQuiz={() => handleNavigateToView('quiz')}
              />
           )}
 
@@ -1759,9 +1795,7 @@ export default function App() {
                  academicYear={academicYear}
                  onClose={() => { 
                   if (studentSession) {
-                     setStudentSession(null);
-                     setShowStudentQuizPortal(false);
-                     setView('login');
+                     setView('student-portal');
                      setSelectedQuiz(null);
                   } else if (showStudentQuizPortal) {
                      setView('quiz-login');
@@ -1781,8 +1815,8 @@ export default function App() {
           {view === 'quiz-login' && (
             <QuizLogin 
               data={appData} 
-              onSelect={(q, st) => { setSelectedQuiz(q); setSelectedStudent(st); setView('quiz'); }} 
-              onClose={() => { setShowStudentQuizPortal(false); setView('dashboard'); }} 
+              onSelect={(q, st) => { setSelectedQuiz(q); setSelectedStudent(st); handleNavigateToView('quiz'); }} 
+              onClose={() => { setShowStudentQuizPortal(false); handleNavigateToView('dashboard'); }} 
             />
           )}
 
@@ -1795,8 +1829,8 @@ export default function App() {
               activeTerm={activeTerm}
               initialClassId={selectedClass?.id}
               initialSubjectId={selectedSubject?.id}
-              onClose={() => setView('dashboard')}
-              onSelectStudent={(st) => { setSelectedStudent(st); setView('student-profile'); }}
+              onClose={() => handleNavigateToView('dashboard')}
+              onSelectStudent={(st) => { setSelectedStudent(st); handleNavigateToView('student-profile'); }}
             />
           )}
 
@@ -1806,10 +1840,10 @@ export default function App() {
               data={appData}
               calculatePerformance={calculatePerformance}
               onClose={() => {
-                setView(previousTeacherView || 'dashboard');
+                handleNavigateToView(previousTeacherView || 'dashboard');
                 setSelectedTeacher(null);
               }}
-              onSelectQuiz={(q) => { setSelectedQuiz(q); setView('quiz-report'); }}
+              onSelectQuiz={(q) => { setSelectedQuiz(q); handleNavigateToView('quiz-report'); }}
             />
           )}
 
@@ -1824,7 +1858,7 @@ export default function App() {
                 handleGoBack();
               }}
               onBack={() => handleGoBack()}
-              onStartQuiz={(q) => { setSelectedQuiz(q); setView('quiz'); }}
+              onStartQuiz={(q) => { setSelectedQuiz(q); handleNavigateToView('quiz'); }}
             />
           )}
 
@@ -1840,7 +1874,7 @@ export default function App() {
               <aside className="w-72 bg-white border-l border-slate-200 p-6 flex flex-col gap-6 shrink-0 overflow-y-auto scrollbar-hide h-full transition-all">
                 <div>
                   <button 
-                    onClick={() => { setView('dashboard'); setSelectedClass(null); setSelectedSubject(null); setSelectedSkill(null); }}
+                    onClick={() => { handleNavigateToView('dashboard'); setSelectedClass(null); setSelectedSubject(null); setSelectedSkill(null); }}
                     className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 font-bold text-xs mb-6 transition-colors group"
                   >
                     <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
@@ -1902,7 +1936,7 @@ export default function App() {
                   {/* Breadcrumb style navigation in sidebar */}
                   <div className="space-y-4">
                     <button 
-                      onClick={() => { setView('subjects'); setSelectedSubject(null); setSelectedSkill(null); }}
+                      onClick={() => { handleNavigateToView('subjects'); setSelectedSubject(null); setSelectedSkill(null); }}
                       className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${!selectedSubject ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'}`}
                     >
                       <span className="font-black text-sm">المواد الدراسية</span>
@@ -1911,7 +1945,7 @@ export default function App() {
                     
                     {selectedSubject && (
                       <button 
-                        onClick={() => { setView('skills'); setSelectedSkill(null); }}
+                        onClick={() => { handleNavigateToView('skills'); setSelectedSkill(null); }}
                         className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${selectedSubject && !selectedSkill ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'}`}
                       >
                          <div className="text-right">
@@ -1924,7 +1958,7 @@ export default function App() {
                   
                   {(view === 'evaluation' || (selectedClass && !selectedSubject)) && (
                     <button 
-                      onClick={() => { setView('evaluation'); setSelectedSubject(null); setSelectedSkill(null); }}
+                      onClick={() => { handleNavigateToView('evaluation'); setSelectedSubject(null); setSelectedSkill(null); }}
                       className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${view === 'evaluation' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'}`}
                     >
                        <span className="font-black text-sm">التشخيص والقياس</span>
@@ -1956,7 +1990,7 @@ export default function App() {
                        .map(s => (
                        <button 
                          key={s.id}
-                         onClick={() => { setSelectedStudent(s); setView('student-profile'); }}
+                         onClick={() => { setSelectedStudent(s); handleNavigateToView('student-profile'); }}
                          className="text-right p-2 rounded-xl text-[10px] font-bold text-slate-500 hover:bg-slate-50 hover:text-indigo-600 transition-all border border-transparent hover:border-slate-100"
                        >
                          {s.name}
@@ -2629,7 +2663,7 @@ export default function App() {
             >
                <div className="max-w-4xl mx-auto print:max-w-full">
                   <div className="flex justify-between items-center mb-12 print:hidden">
-                     <button onClick={() => setView('reports')} className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 font-bold transition-colors">
+                     <button onClick={() => handleNavigateToView('reports')} className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 font-bold transition-colors">
                         <ChevronRight size={20} />
                         العودة للتقارير العامة
                      </button>

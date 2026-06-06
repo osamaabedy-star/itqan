@@ -90,7 +90,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
   const [skillSearchTerm, setSkillSearchTerm] = useState('');
   const [skillSubjectFilter, setSkillSubjectFilter] = useState('all');
   const [quizFilterGradeId, setQuizFilterGradeId] = useState<string>('');
-  const [quizFilterQuizId, setQuizFilterQuizId] = useState<string>('');
+  const [quizFilterSubjectName, setQuizFilterSubjectName] = useState<string>('');
   const [quizFilterTerm, setQuizFilterTerm] = useState<string>('all');
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const [studentSortBy, setStudentSortBy] = useState<'alphabetical' | 'class' | 'progress' | 'progress-asc' | 'support' | 'support-urgent'>('alphabetical');
@@ -1166,7 +1166,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                         value={quizFilterGradeId}
                                         onChange={(e) => {
                                            setQuizFilterGradeId(e.target.value);
-                                           setQuizFilterQuizId(''); // Reset specific quiz selection
+                                           setQuizFilterSubjectName(''); // Reset subject selection
                                         }}
                                         className="bg-transparent font-black text-[11px] text-slate-700 outline-none cursor-pointer border-none p-0 pr-1 select-none w-full min-w-[90px]"
                                      >
@@ -1177,22 +1177,19 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                      </select>
                                   </div>
 
-                                  {/* Specific Quiz Filter */}
+                                  {/* Subject Filter */}
                                   <div className="relative flex items-center bg-slate-50 border border-slate-200/80 rounded-2xl px-3.5 py-2 h-12 hover:border-indigo-300 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-50 transition-all flex-1 sm:flex-none">
-                                     <BrainCircuit size={16} className="text-emerald-500 ml-2 shrink-0" />
-                                     <span className="text-[10px] font-black text-slate-400 ml-1.5 whitespace-nowrap">الاختبار:</span>
+                                     <BookOpen size={16} className="text-emerald-500 ml-2 shrink-0" />
+                                     <span className="text-[10px] font-black text-slate-400 ml-1.5 whitespace-nowrap">المادة:</span>
                                      <select
-                                        value={quizFilterQuizId}
-                                        onChange={(e) => setQuizFilterQuizId(e.target.value)}
+                                        value={quizFilterSubjectName}
+                                        onChange={(e) => setQuizFilterSubjectName(e.target.value)}
                                         className="bg-transparent font-black text-[11px] text-slate-700 outline-none cursor-pointer border-none p-0 pr-1 select-none max-w-[160px] min-w-[110px]"
                                      >
-                                        <option value="">جميع الاختبارات</option>
-                                        {classQuizzes
-                                           .filter(q => !quizFilterGradeId || q.gradeId === quizFilterGradeId)
-                                           .map(q => (
-                                              <option key={q.id} value={q.id}>{q.title}</option>
-                                           ))
-                                        }
+                                        <option value="">جميع المواد</option>
+                                        {Array.from(new Set(classQuizzes.map(q => q.subjectName).filter(Boolean))).sort().map(name => (
+                                           <option key={name} value={name}>{name}</option>
+                                        ))}
                                      </select>
                                   </div>
 
@@ -1230,7 +1227,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                   const filteredList = classQuizzes.filter(q => {
                                      if (searchTerm && !q.title.toLowerCase().includes(searchTerm.toLowerCase())) return false;
                                      if (quizFilterGradeId && q.gradeId !== quizFilterGradeId) return false;
-                                     if (quizFilterQuizId && q.id !== quizFilterQuizId) return false;
+                                     if (quizFilterSubjectName && q.subjectName !== quizFilterSubjectName) return false;
                                      if (quizFilterTerm && quizFilterTerm !== 'all') {
                                         const qTerm = q.term || 'term1';
                                         if (qTerm !== quizFilterTerm) return false;
