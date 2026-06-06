@@ -59,6 +59,14 @@ import {
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 
+const getTimestampMs = (updatedAt: any): number => {
+  if (!updatedAt) return 0;
+  if (typeof updatedAt.toDate === 'function') return updatedAt.toDate().getTime();
+  if (updatedAt.seconds !== undefined && updatedAt.seconds !== null) return updatedAt.seconds * 1000;
+  const parsed = new Date(updatedAt);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
 interface ProfessionalReportsProps {
   data: AppData;
   evaluations: Evaluations;
@@ -411,7 +419,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
       // If global (quizId === ''), group by quizId + studentId. If specific quiz, group by studentId.
       const key = `${r.quizId}-${r.studentId}`;
       const existing = latestResultsMap.get(key);
-      if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+      if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
          latestResultsMap.set(key, r);
       }
     });
@@ -429,7 +437,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
     rawResults.forEach(r => {
       const key = r.studentId;
       const existing = latestResultsMap.get(key);
-      if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+      if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
          latestResultsMap.set(key, r);
       }
     });
@@ -626,7 +634,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
       rawResults.forEach(r => {
          const key = `${r.quizId}-${r.studentId}`;
          const existing = latestResultsMap.get(key);
-         if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+         if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
             latestResultsMap.set(key, r);
          }
       });
@@ -1433,7 +1441,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                             const latestResultsMap = new Map();
                                             rawResults.forEach(r => {
                                                const existing = latestResultsMap.get(r.quizId);
-                                               if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+                                               if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
                                                   latestResultsMap.set(r.quizId, r);
                                                }
                                             });
@@ -2213,7 +2221,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                          const latestResultsMap = new Map();
                          rawResults.forEach((r: any) => {
                             const existing = latestResultsMap.get(r.quizId);
-                            if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+                            if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
                                latestResultsMap.set(r.quizId, r);
                             }
                          });
@@ -2456,7 +2464,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                           });
 
                           relevantResults.forEach(qr => {
-                            const date = qr.updatedAt && qr.updatedAt.toDate ? qr.updatedAt.toDate() : new Date(qr.updatedAt);
+                            const date = new Date(getTimestampMs(qr.updatedAt));
                             const mIndex = months.findIndex(m => m.month === date.getMonth() && m.year === date.getFullYear());
                             if (mIndex !== -1) {
                               months[mIndex].results.push(qr.score);
@@ -2659,7 +2667,7 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                                      <p className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1">تاريخ النشر</p>
                                      <p className="text-sm font-bold text-white leading-tight">
                                        {(() => {
-                                         if (selectedQuizToManage.createdAt) return new Date(selectedQuizToManage.createdAt).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' });
+                                         if (selectedQuizToManage.createdAt) return new Date(getTimestampMs(selectedQuizToManage.createdAt)).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' });
                                          if (selectedQuizToManage.id.startsWith('quiz_')) {
                                             const ts = parseInt(selectedQuizToManage.id.split('_')[1]);
                                             if (!isNaN(ts)) return new Date(ts).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' });

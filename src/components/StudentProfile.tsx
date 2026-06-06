@@ -113,7 +113,7 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
     if (subjectSkills.length === 0) return 0;
     const mastered = subjectSkills.filter(sk => {
       const ev = evaluations[`${student.id}-${sk.id}-${academicYear}`];
-      return ev && ev.score === 'mastered' && ev.classId === student.classId;
+      return ev && ev.score === 'mastered';
     }).length;
     return Math.round((mastered / subjectSkills.length) * 100);
   };
@@ -138,7 +138,7 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
     const latestStudentResultsMap = new Map();
     rawStudentResults.forEach(r => {
       const existing = latestStudentResultsMap.get(r.quizId);
-      if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+      if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
         latestStudentResultsMap.set(r.quizId, r);
       }
     });
@@ -168,7 +168,7 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
     rawClassResults.forEach(r => {
       const key = `${r.quizId}-${r.studentId}`;
       const existing = latestClassResultsMap.get(key);
-      if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+      if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
         latestClassResultsMap.set(key, r);
       }
     });
@@ -309,7 +309,7 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
 
                       <div className="py-6 flex flex-col items-center justify-center space-y-3">
                         <div className="text-4xl font-black text-indigo-600 font-sans tracking-tight">
-                          {Math.round(studentSubjects.reduce((acc, sub) => acc + calculateSubjectProgress(subjectMap.get(sub.name)?.id), 0) / (studentSubjects.length || 1))}%
+                          {Math.round(studentSubjects.reduce((acc, sub) => acc + calculateSubjectProgress(sub?.id), 0) / (studentSubjects.length || 1))}%
                         </div>
                         <p className="text-[10px] text-slate-400 font-bold text-center leading-relaxed max-w-[180px]">إجمالي نسبة إتقان المعايير المعتمدة لجميع المواد</p>
                       </div>

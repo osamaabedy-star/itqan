@@ -11,6 +11,14 @@ interface QuizReportProps {
   filterTeacherId?: string;
 }
 
+const getTimestampMs = (updatedAt: any): number => {
+  if (!updatedAt) return 0;
+  if (typeof updatedAt.toDate === 'function') return updatedAt.toDate().getTime();
+  if (updatedAt.seconds !== undefined && updatedAt.seconds !== null) return updatedAt.seconds * 1000;
+  const parsed = new Date(updatedAt);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
 export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId }: QuizReportProps) {
   const subject = data.subjects.find(s => s.id === quiz.subjectIds?.[0] || s.name === quiz.subjectName);
   const quizGrade = data.grades.find(g => g.id === quiz.gradeId);
@@ -37,7 +45,7 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
     const latestMap = new Map();
     allResults.forEach(r => {
       const existing = latestMap.get(r.studentId);
-      if (!existing || new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+      if (!existing || getTimestampMs(r.updatedAt) > getTimestampMs(existing.updatedAt)) {
         latestMap.set(r.studentId, r);
       }
     });

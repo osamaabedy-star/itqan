@@ -55,6 +55,14 @@ import { ImageUploader } from "./ui/ImageUploader";
 import { PdfUploader } from "./ui/PdfUploader";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
 
+const getTimestampMs = (updatedAt: any): number => {
+  if (!updatedAt) return 0;
+  if (typeof updatedAt.toDate === 'function') return updatedAt.toDate().getTime();
+  if (updatedAt.seconds !== undefined && updatedAt.seconds !== null) return updatedAt.seconds * 1000;
+  const parsed = new Date(updatedAt);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
 function parseBulkLine(line: string, type: "teachers" | "students" = "students") {
   const text = normalizeNumerals(line.trim());
   if (!text) return null;
@@ -2418,41 +2426,87 @@ export function Management({
                         />
                       </div>
 
-                      {parsedTeachers.length > 0 && (
-                        <div className="bg-emerald-50/80 border border-emerald-100 p-5 rounded-2xl flex flex-col gap-3">
-                          <p className="text-emerald-800 text-xs font-black flex items-center gap-1">
-                            <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
-                            تم التعرف على ({parsedTeachers.length}) معلمين من الملف:
-                          </p>
-                          <div className="max-h-40 overflow-y-auto overflow-x-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
-                            <table className="w-full text-xs text-right">
-                              <thead className="bg-slate-50 border-b border-emerald-100/60 text-slate-500 sticky top-0">
-                                <tr>
-                                  <th className="px-3 py-2 font-black">#</th>
-                                  <th className="px-3 py-2 font-black">الاسم</th>
-                                  <th className="px-3 py-2 font-black">رقم الهوية</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-emerald-100/30 font-bold text-slate-800">
-                                {parsedTeachers.map((p, idx) => (
-                                  <tr key={idx} className="hover:bg-slate-50/50">
-                                    <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                                    <td className="px-3 py-2">{p.name}</td>
-                                    <td className="px-3 py-2 font-mono text-indigo-600">{p.nationalId || "-"}</td>
+                      {parsedTeachers.length > 0 && (() => {
+                        const validatedTeachers = parsedTeachers.map(p => {
+                          const plainId = p.nationalId ? p.nationalId.trim().replace(/^t/i, '') : "";
+                          const isIdValid = plainId.length === 10 && /^\d+$/.test(plainId);
+                          const isNameEmptyOrShort = !p.name || p.name.trim().length < 4;
+                          const lowercaseInput = p.nationalId ? p.nationalId.trim().toLowerCase() : "";
+                          const targetNatId = lowercaseInput ? (lowercaseInput.startsWith('t') ? lowercaseInput : 't' + lowercaseInput) : "";
+                          const isDuplicate = targetNatId && data.teachers.some(t => t.nationalId?.trim().toLowerCase() === targetNatId);
+                          return { ...p, isIdValid, isNameEmptyOrShort, isDuplicate };
+                        });
+                        const alertsCount = validatedTeachers.filter(v => !v.isIdValid || v.isNameEmptyOrShort || v.isDuplicate).length;
+
+                        return (
+                          <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 text-right">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b border-slate-200">
+                              <p className="text-slate-805 text-xs font-black flex items-center gap-1.5">
+                                <CheckCircle2 size={16} className="text-indigo-500 animate-pulse" />
+                                تم تحليل ({parsedTeachers.length}) معلمين من الملف المرفوع:
+                              </p>
+                              <div className="flex gap-2 text-[10px] font-black">
+                                <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg border border-indigo-100">
+                                  سجل سليم: {parsedTeachers.length - alertsCount}
+                                </span>
+                                {alertsCount > 0 && (
+                                  <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-100 flex items-center gap-1">
+                                    <AlertTriangle size={10} />
+                                    تنبيهات جودة: {alertsCount}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="max-h-48 overflow-y-auto overflow-x-auto w-full bg-white rounded-xl border border-slate-150 shadow-inner">
+                              <table className="w-full text-xs text-right">
+                                <thead className="bg-slate-50 border-b border-slate-150 text-slate-500 sticky top-0 z-10">
+                                  <tr>
+                                    <th className="px-3 py-2 font-black">#</th>
+                                    <th className="px-3 py-2 font-black">اسم المعلم</th>
+                                    <th className="px-3 py-2 font-black">رقم الهوية المقترح</th>
+                                    <th className="px-3 py-2 font-black">حالة جودة السجل</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
+                                  {validatedTeachers.map((p, idx) => {
+                                    return (
+                                      <tr key={idx} className="hover:bg-slate-50/50">
+                                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                                        <td className="px-3 py-2">
+                                          <span>{p.name}</span>
+                                          {p.isNameEmptyOrShort && (
+                                            <span className="text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded mr-1.5 font-semibold">اسم قصير/ناقص ⚠️</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 font-mono text-indigo-600">
+                                          {p.nationalId || "-"}
+                                        </td>
+                                        <td className="px-3 py-2 text-[10px]">
+                                          {p.isDuplicate ? (
+                                            <span className="text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded font-extrabold">منشأ مسبقاً بالنظام</span>
+                                          ) : !p.isIdValid && p.nationalId ? (
+                                            <span className="text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded font-extrabold flex items-center gap-0.5 inline-flex">هوية غير معيارية ⚠️</span>
+                                          ) : (
+                                            <span className="text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded font-extrabold">سليم ومؤكد ✓</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setParsedTeachers([])}
+                              className="text-rose-500 text-[10px] font-black underline self-start hover:text-rose-700 transition"
+                            >
+                              إلغاء واستيراد ملف آخر
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setParsedTeachers([])}
-                            className="text-rose-500 text-[10px] font-black underline self-start hover:text-rose-700 transition"
-                          >
-                            إلغاء واستيراد ملف آخر
-                          </button>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -2757,45 +2811,91 @@ export function Management({
                             />
                           </div>
 
-                          {parsedStudents.length > 0 && (
-                            <div className="bg-emerald-50/80 border border-emerald-100 p-4 rounded-2xl flex flex-col gap-2">
-                              <p className="text-emerald-800 text-xs font-black flex items-center gap-1">
-                                <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
-                                تم التعرف على ({parsedStudents.length}) طلاب من الملف:
-                              </p>
-                              <div className="max-h-40 overflow-y-auto overflow-x-auto w-full bg-white rounded-xl border border-emerald-100/60 shadow-inner">
-                                <table className="w-full text-xs text-right">
-                                  <thead className="bg-slate-50 border-b border-emerald-100/60 text-slate-500 sticky top-0">
-                                    <tr>
-                                      <th className="px-3 py-2 font-black">#</th>
-                                      <th className="px-3 py-2 font-black">الاسم</th>
-                                      <th className="px-3 py-2 font-black">رقم الهوية</th>
-                                      <th className="px-3 py-2 font-black">الصف</th>
-                                      <th className="px-3 py-2 font-black">الفصل</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-emerald-100/30 font-bold text-slate-800">
-                                    {parsedStudents.map((p, idx) => (
-                                      <tr key={idx} className="hover:bg-slate-50/50">
-                                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                                        <td className="px-3 py-2">{p.name}</td>
-                                        <td className="px-3 py-2 font-mono text-indigo-600">{p.nationalId || "-"}</td>
-                                        <td className="px-3 py-2 text-slate-500">{p.gradeName || <span className="text-rose-400 italic">غير محدد</span>}</td>
-                                        <td className="px-3 py-2 text-slate-500">{p.className || <span className="text-rose-400 italic">غير محدد</span>}</td>
+                          {parsedStudents.length > 0 && (() => {
+                            const validatedStudents = parsedStudents.map(p => {
+                              const plainId = p.nationalId ? p.nationalId.trim().replace(/^s/i, '') : "";
+                              const isIdValid = plainId.length === 10 && /^\d+$/.test(plainId);
+                              const isNameEmptyOrShort = !p.name || p.name.trim().length < 4;
+                              const lowercaseInput = p.nationalId ? p.nationalId.trim().toLowerCase() : "";
+                              const targetNatId = lowercaseInput ? (lowercaseInput.startsWith('s') ? lowercaseInput : 's' + lowercaseInput) : "";
+                              const isDuplicate = targetNatId && data.students.some(s => s.nationalId?.trim().toLowerCase() === targetNatId);
+                              return { ...p, isIdValid, isNameEmptyOrShort, isDuplicate };
+                            });
+                            const alertsCount = validatedStudents.filter(v => !v.isIdValid || v.isNameEmptyOrShort || v.isDuplicate).length;
+
+                            return (
+                              <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 text-right w-full">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b border-slate-200">
+                                  <p className="text-slate-800 text-xs font-black flex items-center gap-1.5">
+                                    <CheckCircle2 size={16} className="text-indigo-500 animate-pulse" />
+                                    تم تحليل ({parsedStudents.length}) طلاب من الملف المرفوع:
+                                  </p>
+                                  <div className="flex gap-2 text-[10px] font-black">
+                                    <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg border border-indigo-100 font-extrabold text-xs">
+                                      سليم ومؤكد: {parsedStudents.length - alertsCount}
+                                    </span>
+                                    {alertsCount > 0 && (
+                                      <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-100 flex items-center gap-1 font-extrabold text-xs">
+                                        <AlertTriangle size={12} className="text-amber-500" />
+                                        تنبيهات جودة: {alertsCount}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="max-h-48 overflow-y-auto overflow-x-auto w-full bg-white rounded-xl border border-slate-150 shadow-inner">
+                                  <table className="w-full text-xs text-right">
+                                    <thead className="bg-slate-50 border-b border-slate-150 text-slate-500 sticky top-0 z-10">
+                                      <tr>
+                                        <th className="px-3 py-2 font-black">#</th>
+                                        <th className="px-3 py-2 font-black">اسم الطالب</th>
+                                        <th className="px-3 py-2 font-black">رقم الهوية المقترح</th>
+                                        <th className="px-3 py-2 font-black">الصف والفرع</th>
+                                        <th className="px-3 py-2 font-black">حالة جودة السجل</th>
                                       </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
+                                      {validatedStudents.map((p, idx) => {
+                                        return (
+                                          <tr key={idx} className="hover:bg-slate-50/50">
+                                            <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                                            <td className="px-3 py-2">
+                                              <span>{p.name}</span>
+                                              {p.isNameEmptyOrShort && (
+                                                <span className="text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded mr-1.5 font-semibold">اسم قصير/ناقص ⚠️</span>
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-2 font-mono text-indigo-600">
+                                              {p.nationalId || "-"}
+                                            </td>
+                                            <td className="px-3 py-2 text-[11px] text-slate-500">
+                                              {p.gradeName || p.className ? `${p.gradeName || ""} - ${p.className || ""}` : <span className="text-slate-400 italic">يتبع الفصل المحدد جانباً</span>}
+                                            </td>
+                                            <td className="px-3 py-2 text-[10px]">
+                                              {p.isDuplicate ? (
+                                                <span className="text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded font-extrabold">موجود مسبقاً بالنظام (سيدمج سجلّه)</span>
+                                              ) : !p.isIdValid && p.nationalId ? (
+                                                <span className="text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded font-extrabold flex items-center gap-0.5 inline-flex">هوية غير معيارية ⚠️</span>
+                                              ) : (
+                                                <span className="text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded font-extrabold">سليم ومؤكد ✓</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setParsedStudents([])}
+                                  className="text-rose-500 text-[10px] font-black underline self-start hover:text-rose-700 transition"
+                                >
+                                  إلغاء واستيراد ملف آخر
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => setParsedStudents([])}
-                                className="text-rose-500 text-[10px] font-black underline self-start hover:text-rose-700 transition"
-                              >
-                                إلغاء واستيراد ملف آخر
-                              </button>
-                            </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -3990,8 +4090,8 @@ export function Management({
                                 );
                                 if (
                                   !existing ||
-                                  new Date(r.updatedAt).getTime() >
-                                    new Date(existing.updatedAt).getTime()
+                                  getTimestampMs(r.updatedAt) >
+                                    getTimestampMs(existing.updatedAt)
                                 ) {
                                   latestResultsMap.set(r.studentId, r);
                                 }
