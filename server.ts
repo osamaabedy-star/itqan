@@ -68,12 +68,6 @@ async function startServer() {
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          error: "مفتاح الذكاء الاصطناعي (GEMINI_API_KEY) غير مهيأ. يرجى تهيئته في الإعدادات أولاً."
-        });
-      }
-
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -199,12 +193,6 @@ ${text}
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          error: "مفتاح الذكاء الاصطناعي (GEMINI_API_KEY) غير مهيأ. يرجى تهيئته في الإعدادات أولاً."
-        });
-      }
-
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -312,12 +300,6 @@ ${text}
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          error: "مفتاح الذكاء الاصطناعي (GEMINI_API_KEY) غير مهيأ. يرجى تهيئته في الإعدادات أولاً."
-        });
-      }
-
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -396,4 +378,7 @@ ${text}
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});
