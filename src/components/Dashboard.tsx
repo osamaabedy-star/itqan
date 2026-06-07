@@ -236,7 +236,7 @@ export function Dashboard({
       <div className="max-w-7xl mx-auto space-y-4 pb-20">
         {/* Header removed */}
 
-        {/* View Switch: Stages -> Grades -> Classes */}
+        {/* 1. Educational Stages at the top */}
         {!selectedStageId ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center px-2 mt-4">
@@ -331,47 +331,36 @@ export function Dashboard({
                   </button>
                 );
               })}
-              {displayedGrades.length === 0 && (
-                <div className="col-span-1 lg:col-span-4 text-center py-20 bg-white border border-dashed border-slate-200 rounded-[40px]">
-                  <Layers size={48} className="mx-auto text-slate-300 mb-4" />
-                  <h3 className="text-xl font-black text-slate-500 mb-2">
-                    لا توجد مراحل مسجلة
-                  </h3>
-                  <p className="text-sm text-slate-400">
-                    انتقل لتهيئة النظام لإضافة المراحل والصفوف.
-                  </p>
-                </div>
-              )}
             </div>
-
-            {/* Split Monitoring Sections with Filters */}
-            <div className="space-y-6 mt-12 bg-indigo-50/30 p-8 rounded-[3rem] border border-indigo-100">
+            
+            {/* 2. Monitoring Matrix Section (Skills and Tests) right after educational stages */}
+            <div className="space-y-6 mt-12 bg-white/40 p-8 rounded-[3rem] border border-slate-200">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                    <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200">
                          <ShieldAlert size={20} />
                       </div>
                       <div>
-                         <h3 className="text-xl font-black text-slate-800">مركز المتابعة والرقابة</h3>
-                         <p className="text-xs font-bold text-slate-400">رصد المهارات والاختبارات غير المكتملة</p>
+                         <h3 className="text-xl font-black text-slate-800 text-right">مصروفة الإنجاز والمتابعة</h3>
+                         <p className="text-xs font-bold text-slate-400 text-right">رصد وتتبع المهارات والاختبارات غير المنجزة</p>
                       </div>
                    </div>
 
                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200">
-                        <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">الفصل:</span>
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
+                        <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">الفصل الدراسي:</span>
                         <select 
                           value={monitorTerm}
                           onChange={(e) => setMonitorTerm(e.target.value as any)}
                           className="text-[11px] font-black text-indigo-600 bg-transparent outline-none border-none cursor-pointer"
                         >
                           <option value="full">الكل</option>
-                          <option value="term1">الفصل الأول</option>
-                          <option value="term2">الفصل الثاني</option>
+                          <option value="term1">الفصل الدراسي الأول</option>
+                          <option value="term2">الفصل الدراسي الثاني</option>
                         </select>
                       </div>
 
-                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200">
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
                         <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">الصف:</span>
                         <select 
                           value={monitorGradeId}
@@ -385,7 +374,7 @@ export function Dashboard({
                         </select>
                       </div>
 
-                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200">
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
                         <span className="text-[10px] font-black text-slate-400 whitespace-nowrap">المادة:</span>
                         <select 
                           value={monitorSubjectId}
@@ -402,36 +391,51 @@ export function Dashboard({
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <MissingEvaluationsCard 
-                    data={data}
-                    evaluations={evaluations}
-                    academicYear={academicYear}
-                    filterTeacherId={filterTeacherId}
-                    filterGradeId={monitorGradeId}
-                    filterSubjectName={monitorSubjectId}
-                    filterTerm={monitorTerm}
-                    onStudentClick={(studentId) => {
-                      const s = data.students.find(st => st.id === studentId);
-                      if (s) {
-                        const cls = data.classes.find(c => c.id === s.classId);
-                        if (cls) onSelectClass(cls);
-                        onSelectStudent(s);
-                        onNavigate("quick-matrix");
-                      }
-                    }}
-                  />
-                  <MissingQuizzesCard 
-                    data={data}
-                    academicYear={academicYear}
-                    filterTeacherId={filterTeacherId}
-                    filterGradeId={monitorGradeId}
-                    filterSubjectName={monitorSubjectId}
-                    filterTerm={monitorTerm}
-                    onStudentQuizClick={(student, quiz) => {
-                      onSelectStudent(student);
-                      onSelectQuiz(quiz, student);
-                    }}
-                  />
+                  {/* Part 1: Skills Section */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="w-1.5 h-4 bg-emerald-500 rounded-full"></div>
+                      <h4 className="text-sm font-black text-slate-700">قسم المهارات التعليمية</h4>
+                    </div>
+                    <MissingEvaluationsCard 
+                      data={data}
+                      evaluations={evaluations}
+                      academicYear={academicYear}
+                      filterTeacherId={filterTeacherId}
+                      filterGradeId={monitorGradeId}
+                      filterSubjectName={monitorSubjectId}
+                      filterTerm={monitorTerm}
+                      onStudentClick={(studentId) => {
+                        const s = data.students.find(st => st.id === studentId);
+                        if (s) {
+                          const cls = data.classes.find(c => c.id === s.classId);
+                          if (cls) onSelectClass(cls);
+                          onSelectStudent(s);
+                          onNavigate("quick-matrix");
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {/* Part 2: Tests Section */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="w-1.5 h-4 bg-amber-500 rounded-full"></div>
+                      <h4 className="text-sm font-black text-slate-700">قسم الاختبارات الذكية</h4>
+                    </div>
+                    <MissingQuizzesCard 
+                      data={data}
+                      academicYear={academicYear}
+                      filterTeacherId={filterTeacherId}
+                      filterGradeId={monitorGradeId}
+                      filterSubjectName={monitorSubjectId}
+                      filterTerm={monitorTerm}
+                      onStudentQuizClick={(student, quiz) => {
+                        onSelectStudent(student);
+                        onSelectQuiz(quiz, student);
+                      }}
+                    />
+                  </div>
                 </div>
             </div>
           </div>
@@ -621,11 +625,14 @@ export function Dashboard({
                             <button
                               onClick={() => {
                                 onSelectStudent(st);
-                                onNavigate("student-profile");
+                                // Set selected class so quick matrix knows where to look
+                                const cls = data.classes.find(c => c.id === st.classId);
+                                if (cls) onSelectClass(cls);
+                                onNavigate("quick-matrix");
                               }}
                               className="w-8 h-8 rounded-full bg-white text-indigo-600 flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
                             >
-                              <ArrowLeft size={14} />
+                              <BrainCircuit size={14} />
                             </button>
                           </div>
                         );

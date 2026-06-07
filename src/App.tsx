@@ -1115,6 +1115,7 @@ export default function App() {
                    }}
                    onToggleTerm={toggleTerm}
                    calculatePerformance={calculatePerformance}
+                   onClose={handleGoBack}
                 />
               ) : (
                 <TeacherDashboard 
@@ -1816,7 +1817,7 @@ export default function App() {
             <QuizLogin 
               data={appData} 
               onSelect={(q, st) => { setSelectedQuiz(q); setSelectedStudent(st); handleNavigateToView('quiz'); }} 
-              onClose={() => { setShowStudentQuizPortal(false); handleNavigateToView('dashboard'); }} 
+              onClose={handleGoBack} 
             />
           )}
 
@@ -1829,7 +1830,7 @@ export default function App() {
               activeTerm={activeTerm}
               initialClassId={selectedClass?.id}
               initialSubjectId={selectedSubject?.id}
-              onClose={() => handleNavigateToView('dashboard')}
+              onClose={handleGoBack}
               onSelectStudent={(st) => { setSelectedStudent(st); handleNavigateToView('student-profile'); }}
             />
           )}

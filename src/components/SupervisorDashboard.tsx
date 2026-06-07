@@ -29,10 +29,11 @@ interface SupervisorDashboardProps {
   onLogout: () => void;
   onToggleTerm: () => void;
   calculatePerformance: (classId: string, subjectId?: string) => number;
+  onClose?: () => void;
 }
 
 export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ 
-  data, evaluations, academicYear, displayYear, activeTerm, externalProfile, onLogout, onToggleTerm, calculatePerformance 
+  data, evaluations, academicYear, displayYear, activeTerm, externalProfile, onLogout, onToggleTerm, calculatePerformance, onClose 
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'visits' | 'quizzes'>('overview');
   const [filterTeacherId, setFilterTeacherId] = useState<string>('');
@@ -261,7 +262,7 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                   <Management 
                     data={data} 
                     evaluations={evaluations}
-                    onClose={() => setActiveTab('overview')} 
+                    onClose={onClose || (() => setActiveTab('overview'))} 
                     filterTeacherId={filterTeacherId}
                     onFilterTeacherChange={setFilterTeacherId}
                     academicYear={academicYear}
