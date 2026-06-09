@@ -7,44 +7,44 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Helper function to call generateContent with retry on transient errors
-async function generateContentWithRetry(ai: any, params: any, maxRetries = 6, initialDelay = 2000) {
+// @ts-ignore
+async function generateContentWithRetry(ai: any, params: any, maxRetries = 4, initialDelay = 1500) {
   let attempt = 0;
-  // Use gemini-3.5-flash as the primary recommended model for text tasks
+  // Use recommended primary model from skill
   const originalModel = params.model || "gemini-3.5-flash";
   
-  // Stable and supported models list from skill
+  // Strict list of valid models from current skill guidance
   const fallbackModels = [
-    "gemini-3.5-flash",
-    "gemini-flash-latest",
-    "gemini-3.1-flash-lite",
-    "gemini-1.5-flash-8b", // Sometimes available when others aren't
+    "gemini-3.5-flash",        // Primary for basic text/JSON
+    "gemini-3.1-pro-preview",   // More capable if flash fails
+    "gemini-3.1-flash-lite",    // Lightweight fallback
+    "gemini-flash-latest"       // Alias for latest flash
   ];
 
-  // Ensure initial model is set
-  if (!params.model) params.model = originalModel;
+  // Map to exclude definitely failed models in this lifecycle to avoid repeated 404s
+  const badModels = new Set<string>();
 
-  while (true) {
+  while (attempt <= maxRetries) {
+    // Pick the best available model
+    let currentModel = params.model || originalModel;
+    
+    // If current model is known bad (404), rotate to next available
+    if (badModels.has(currentModel)) {
+      const nextIdx = attempt % fallbackModels.length;
+      currentModel = fallbackModels[nextIdx];
+      params.model = currentModel;
+    }
+
     try {
-      console.log(`[Gemini API] Calling ${params.model} (Attempt ${attempt + 1})`);
-      return await ai.models.generateContent(params);
+      console.log(`[Gemini API] Target: ${currentModel} (Attempt ${attempt + 1}/${maxRetries + 1})`);
+      const result = await ai.models.generateContent(params);
+      return result;
     } catch (error: any) {
       attempt++;
-      const errorMsg = String(error?.stack || error?.message || error);
-      console.error(`[Gemini API] Failure on ${params.model}: ${errorMsg.substring(0, 400)}`);
+      const errorMsg = String(error?.stack || error?.message || error || "Unknown Error");
+      console.error(`[Gemini API] Error on ${currentModel}: ${errorMsg.substring(0, 350)}`);
       
-      // Resource Exhausted (429) / Service Unavailable (503) / Internal Error (500)
-      const isTransient = 
-        errorMsg.includes("503") || 
-        errorMsg.includes("429") || 
-        errorMsg.includes("UNAVAILABLE") || 
-        errorMsg.includes("high demand") || 
-        errorMsg.includes("ResourceExhausted") || 
-        errorMsg.includes("resource exhausted") ||
-        errorMsg.includes("overloaded") ||
-        errorMsg.includes("limit") ||
-        errorMsg.includes("quota");
-
-      // Model Not Found (404)
+      // 404 = Model Not Found or Not Supported
       const isNotFound = 
         errorMsg.includes("404") || 
         errorMsg.includes("NOT_FOUND") || 
@@ -52,38 +52,43 @@ async function generateContentWithRetry(ai: any, params: any, maxRetries = 6, in
         errorMsg.includes("not supported") ||
         errorMsg.includes("invalid model");
 
+      if (isNotFound) {
+        console.warn(`[Gemini API] Model ${currentModel} is unavailable (404). Blacklisting for this session.`);
+        badModels.add(currentModel);
+      }
+
+      // 429 = Quota, 503 = Overloaded, 500 = Transient
+      const isQuota = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("ResourceExhausted") || errorMsg.includes("limit");
+      const isTransient = isQuota || errorMsg.includes("503") || errorMsg.includes("500") || errorMsg.includes("overloaded") || errorMsg.includes("high demand") || errorMsg.includes("Service Unavailable");
+
       if (attempt <= maxRetries && (isTransient || isNotFound)) {
-        // Switch model for either 404 (wrong model) OR 429/503 (full for this model)
+        // Switch to next model in list
         const nextModel = fallbackModels[attempt % fallbackModels.length];
-        
-        if (params.model !== nextModel) {
-          console.warn(`[Gemini API] Switching model from ${params.model} to ${nextModel} due to ${isNotFound ? '404' : '429/503'}`);
-          params.model = nextModel;
+        params.model = nextModel;
+
+        // Exponential backoff
+        let delay = initialDelay * Math.pow(2, attempt - 1);
+        if (isQuota) {
+          delay += 2500; // Extra buffer for rate limits
+          console.warn(`[Gemini API] Rate limit hit. Backoff: ${delay}ms`);
         }
 
-        // Increase delay significantly for quota issues
-        let delay = initialDelay * Math.pow(2.5, attempt - 1);
-        if (errorMsg.includes("429")) {
-          delay += 2000; // Extra buffer for quota
-          console.warn(`[Gemini API] Quota hit. Waiting extra long: ${delay}ms`);
-        }
-
-        console.warn(`[Gemini API] Retrying in ${Math.round(delay)}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, Math.min(delay, 20000)));
         continue;
       }
-      
-      // If we exhausted retries or hit a non-retryable error
-      if (errorMsg.includes("429") || errorMsg.includes("quota")) {
-        throw new Error("لقد تجاوزت حد الاستخدام اليومي للذكاء الاصطناعي (Quota Exceeded). يرجى المحاولة مرة أخرى بعد بضع دقائق أو في وقت لاحق.");
+
+      // Exhausted or unrecoverable
+      if (isQuota) {
+        throw new Error("عذراً، لقد تجاوزت حد الاستخدام المتاح للذكاء الاصطناعي حالياً (Quota Exceeded). يرجى المحاولة مرة أخرى بعد دقيقتين.");
       }
       if (errorMsg.includes("503") || errorMsg.includes("UNAVAILABLE")) {
-        throw new Error("خدمة الذكاء الاصطناعي تعاني حالياً من ضغط شديد. يرجى المحاولة مرة أخرى بعد قليل.");
+        throw new Error("تعتذر خدمة الذكاء الاصطناعي عن الاستجابة حالياً بسبب ضغط الطلبات. يرجى المحاولة مرة أخرى لاحقاً.");
       }
       
       throw error;
     }
   }
+  throw new Error("فشلت محاولات الاتصال بالذكاء الاصطناعي. يرجى التأكد من استقرار الإنترنت والمحاولة لاحقاً.");
 }
 
 async function startServer() {
@@ -96,7 +101,7 @@ async function startServer() {
 
   // Health check
   app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
-  app.post("/api/gemini/parse-quizzes", async (req, res) => {
+    app.post("/api/gemini/parse-quizzes", async (req, res) => {
     try {
       const { text, metadata } = req.body;
       if (!text) {
@@ -104,6 +109,10 @@ async function startServer() {
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "مفتاح API الخاص بـ الذكاء الاصطناعي غير متوفر حالياً. يرجى إعداده في الإعدادات." });
+      }
+
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -230,8 +239,7 @@ ${text}
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        console.error("GEMINI_API_KEY is missing!");
-        return res.status(500).json({ error: "مفتاح الذكاء الاصطناعي (API KEY) غير متوفر." });
+        return res.status(500).json({ error: "مفتاح API الخاص بـ الذكاء الاصطناعي غير متوفر حالياً." });
       }
 
       const ai = new GoogleGenAI({
@@ -341,6 +349,10 @@ ${text}
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "مفتاح API الخاص بـ الذكاء الاصطناعي غير متوفر حالياً." });
+      }
+
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
