@@ -91,7 +91,12 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
   const [skillSubjectFilter, setSkillSubjectFilter] = useState('all');
   const [quizFilterGradeId, setQuizFilterGradeId] = useState<string>('');
   const [quizFilterSubjectName, setQuizFilterSubjectName] = useState<string>('');
-  const [quizFilterTerm, setQuizFilterTerm] = useState<string>('all');
+  const [quizFilterTerm, setQuizFilterTerm] = useState<string>(activeTerm === 'full' ? 'all' : activeTerm);
+
+  // Sync quizFilterTerm with activeTerm prop when it changes
+  React.useEffect(() => {
+    setQuizFilterTerm(activeTerm === 'full' ? 'all' : activeTerm);
+  }, [activeTerm]);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const [studentSortBy, setStudentSortBy] = useState<'alphabetical' | 'class' | 'progress' | 'progress-asc' | 'support' | 'support-urgent'>('alphabetical');
   const [selectedReportStudentId, setSelectedReportStudentId] = useState<string>('');

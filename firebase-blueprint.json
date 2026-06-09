@@ -228,6 +228,38 @@
       },
       "required": ["id", "quizId", "teacherId", "teacherName", "signed", "signedAt"]
     },
+    "SkillSignature": {
+      "title": "SkillSignature",
+      "description": "Signature record of a teacher reviewing skill evaluations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "classId": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "signed": { "type": "boolean" },
+        "signedAt": { "type": "string", "format": "date-time" },
+        "signatureText": { "type": "string" }
+      },
+      "required": ["id", "classId", "subjectId", "teacherId", "teacherName", "signed", "signedAt"]
+    },
+    "VisitSignature": {
+      "title": "VisitSignature",
+      "description": "Signature record of a teacher reviewed by a supervisor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "visitId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "signed": { "type": "boolean" },
+        "signedAt": { "type": "string", "format": "date-time" },
+        "signatureText": { "type": "string" }
+      },
+      "required": ["id", "visitId", "teacherId", "teacherName", "signed", "signedAt"]
+    },
     "SupportPlan": {
       "title": "SupportPlan",
       "description": "Support plan details for students",
@@ -270,9 +302,28 @@
         "createdBy": { "type": "string" }
       },
       "required": ["id", "title", "gradeId", "subjectName", "term"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Log of user actions for synchronization and tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "role": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "action", "timestamp"]
     }
   },
   "firestore": {
+    "/activityLogs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Logs of user activities for data synchronization"
+    },
     "/externalProfiles/{profileId}": {
       "schema": "ExternalProfile",
       "description": "External user profiles for ID-based login"
@@ -324,6 +375,14 @@
     "/quizSignatures/{signatureId}": {
       "schema": "QuizSignature",
       "description": "Signatures certifying teacher review of quizzes"
+    },
+    "/skillSignatures/{signatureId}": {
+      "schema": "SkillSignature",
+      "description": "Signatures certifying teacher review of skill evaluations"
+    },
+    "/visitSignatures/{signatureId}": {
+      "schema": "VisitSignature",
+      "description": "Signatures certifying teacher review of visits"
     },
     "/supportPlans/{supportPlanId}": {
       "schema": "SupportPlan",

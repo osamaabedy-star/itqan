@@ -28,6 +28,8 @@ import {
   Zap,
   Calendar,
   Sparkles,
+  Sun,
+  Moon,
   FileSpreadsheet,
   Download,
   Upload,
@@ -148,6 +150,10 @@ interface ManagementProps {
   onFilterTeacherChange?: (id: string) => void;
   onSelectStudent?: (s: Student) => void;
   academicYear?: string;
+  activeTerm?: 'term1' | 'term2' | 'full';
+  onSetTerm?: (term: 'term1' | 'term2' | 'full') => void;
+  theme?: 'light' | 'dark' | 'calm';
+  onThemeChange?: (theme: 'light' | 'dark' | 'calm') => void;
   externalProfile?: ExternalProfile;
   defaultActiveTab?: "overview"
     | "grades"
@@ -204,6 +210,10 @@ export function Management({
   onFilterTeacherChange,
   onSelectStudent,
   academicYear,
+  activeTerm,
+  onSetTerm,
+  theme,
+  onThemeChange,
   externalProfile,
   defaultActiveTab,
   restrictToTab,
@@ -592,7 +602,14 @@ export function Management({
   const [filterSubjectId, setFilterSubjectId] = useState("");
   const [filterQuizSubjectId, setFilterQuizSubjectId] = useState("");
   const [filterQuizGradeId, setFilterQuizGradeId] = useState("");
-  const [filterQuizTerm, setFilterQuizTerm] = useState<string>("");
+  const [filterQuizTerm, setFilterQuizTerm] = useState<string>(activeTerm === 'full' ? "" : activeTerm || "");
+
+  // Sync filterQuizTerm with activeTerm prop when it changes
+  useEffect(() => {
+    if (activeTerm) {
+      setFilterQuizTerm(activeTerm === 'full' ? "" : activeTerm);
+    }
+  }, [activeTerm]);
   const [filterQuizStage, setFilterQuizStage] = useState<string>("");
 
   const filterTeacherId = onFilterTeacherChange
@@ -706,11 +723,11 @@ export function Management({
 
       if (!response.ok) {
         throw new Error(
-          resData.error || "فشل في توليد الأسئلة. يرجى المحاولة لاحقاً.",
+          resData.error || resData.details || "فشل في توليد الأسئلة. يرجى التأكد من اتصال الإنترنت وصلاحية الحساب.",
         );
       }
 
-      if (resData.success && Array.isArray(resData.questions)) {
+      if (resData.success && Array.isArray(resData.questions) && resData.questions.length > 0) {
         const formattedQuestions: MCQQuestion[] = resData.questions.map(
           (q: any) => ({
             id: `q_${Date.now()}_${Math.random()}`,
@@ -731,21 +748,20 @@ export function Management({
         );
 
         setQuizQuestions((prev) => [...prev, ...formattedQuestions]);
-        if (aiMode === "lesson") {
-          setAiLessonName("");
-        } else {
-          setAiPrompt("");
-        }
+        const lessonDisplay = aiMode === "lesson" ? (aiLessonName.trim() || finalSubject) : "المخصص";
         setAiSuccess(
-          `تم توليد وإضافة ${formattedQuestions.length} سؤال بنجاح لدرس (${aiMode === "lesson" ? aiLessonName : "المخصص"}) إلى نهاية الاختبار!`,
+          `تم توليد وإضافة ${formattedQuestions.length} سؤال بنجاح لدرس (${lessonDisplay}) إلى نهاية الاختبار!`,
         );
         setTimeout(() => setAiSuccess(""), 5500);
+        
+        if (aiMode === "lesson") setAiLessonName("");
+        else setAiPrompt("");
       } else {
-        throw new Error("الاستجابة المستلمة من الذكاء الاصطناعي غير صالحة");
+        throw new Error("لم يتم إرجاع أي أسئلة صالحة من الذكاء الاصطناعي. يرجى تعديل الوصف.");
       }
     } catch (err: any) {
-      console.error("AI Question Generator Error:", err);
-      setAiError(err.message || "حدث خطأ أثناء الاتصال بالذكاء الاصطناعي");
+      console.error("AI Generation Catch:", err);
+      setAiError(err.message || "حدث خطأ غير متوقع أثناء توليد الأسئلة");
     } finally {
       setAiIsGenerating(false);
     }
@@ -1084,6 +1100,7 @@ export function Management({
           createdAt: new Date().toISOString(),
           isArchived: false,
           academicYear: academicYear || "2025-2026",
+          creatorId: externalProfile?.id || null,
         };
 
         await firestoreService.saveItem("quizzes", id, quizToSave);
@@ -2153,6 +2170,44 @@ export function Management({
               >
                 <ChevronRight size={12} className="shrink-0" />
                 <span>رجوع للوحة الإشراف</span>
+              </button>
+            )}
+
+            {/* Term Selector */}
+            {activeTerm && onSetTerm && (
+              <div className="flex items-center gap-1.5 bg-amber-50/50 px-2 py-1 rounded-lg border border-amber-100/50">
+                <Calendar size={12} className="text-amber-600" />
+                <select 
+                  value={activeTerm} 
+                  onChange={(e) => onSetTerm(e.target.value as any)}
+                  className="bg-transparent border-none outline-none font-black text-[9px] text-amber-700 cursor-pointer"
+                >
+                    <option value="full">العام الدراسي كامل</option>
+                    <option value="term1">الفصل الأول</option>
+                    <option value="term2">الفصل الثاني</option>
+                </select>
+              </div>
+            )}
+
+            {/* Theme Toggler */}
+            {onThemeChange && (
+              <button 
+                onClick={() => {
+                  if (theme === 'light') onThemeChange('dark');
+                  else if (theme === 'dark') onThemeChange('calm');
+                  else onThemeChange('light');
+                }}
+                className="h-8 w-8 md:w-auto md:px-2 bg-white border border-slate-200 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-50 transition-all cursor-pointer shadow-sm text-slate-600 outline-none"
+                title="تغيير المظهر"
+              >
+                {theme === 'light' && <Sun size={12} className="text-amber-500" />}
+                {theme === 'dark' && <Moon size={12} className="text-indigo-400" />}
+                {theme === 'calm' && <Sparkles size={12} className="text-amber-600" />}
+                <span className="text-[9px] font-black hidden lg:inline">
+                  {theme === 'light' && 'فاتح'}
+                  {theme === 'dark' && 'ليلي'}
+                  {theme === 'calm' && 'هادئ'}
+                </span>
               </button>
             )}
 
@@ -3512,6 +3567,11 @@ export function Management({
                             <button type="button" onClick={() => setAiMode("custom")} className={`flex-1 py-1.5 px-3 rounded-xl font-black text-[10px] transition-all ${aiMode === 'custom' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>توليد حر</button>
                           </div>
                           <div className="space-y-4">
+                            {externalProfile?.role === 'supervisor' && data.grades.length === 0 && (
+                               <div className="text-[10px] text-amber-600 bg-amber-50 p-3 rounded-xl border border-amber-100 font-bold mb-2">
+                                  ⚠️ لا يوجد مراحل دراسية مخصصة لهذا الحساب. يرجى مراجعة الإدارة (رقم الهوية: {externalProfile.id})
+                               </div>
+                            )}
                             {aiMode === "lesson" && (
                               <div className="space-y-4 bg-white p-4 rounded-2xl border border-slate-100">
                                 <div className="space-y-2">

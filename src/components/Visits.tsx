@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AppData, Evaluations, Visit, Teacher, Class, Student } from "../types";
+import { AppData, Evaluations, Visit, Teacher, Class, Student, ExternalProfile, VisitSignature } from "../types";
 import { firestoreService } from "../services/firestoreService";
 import {
   Focus,
@@ -13,8 +13,12 @@ import {
   X,
   ArrowLeftRight,
   UserCheck,
+  CheckCircle2,
+  AlertCircle,
+  PenTool
 } from "lucide-react";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
+import { SignatureBox } from "./SignatureBox";
 
 interface VisitsProps {
   data: AppData;
@@ -22,6 +26,7 @@ interface VisitsProps {
   academicYear: string;
   activeTerm: "term1" | "term2" | "full";
   filterTeacherId?: string;
+  externalProfile?: ExternalProfile | null;
 }
 
 const SCORE_LABELS: Record<number, string> = {
@@ -37,6 +42,7 @@ export function Visits({
   academicYear,
   activeTerm,
   filterTeacherId,
+  externalProfile,
 }: VisitsProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -90,11 +96,10 @@ export function Visits({
       !visitDate ||
       !subjectId ||
       !lessonPeriod ||
-      !lessonTitle ||
-      !targetClassId
+      !lessonTitle
     ) {
       alert(
-        "يجب تعبئة المعلم، تاريخ الزيارة، المادة، الحصة، عنوان الدرس، وتحديد الفصل",
+        "يجب تعبئة المعلم، تاريخ الزيارة، المادة، الحصة، وعنوان الدرس",
       );
       return;
     }
@@ -124,9 +129,10 @@ export function Visits({
         quizUrl,
         evaluationData,
         isArchived: false,
-        targetClassId,
+        targetClassId: targetClassId || "",
         visitType,
         visitorTeacherId,
+        creatorId: externalProfile?.id || null,
       });
 
       setIsAdding(false);
@@ -1203,6 +1209,42 @@ export function Visits({
                               })}
                             </div>
                           )}
+
+                          {/* Teacher Signature Section */}
+                          <div className="mt-6 border-t border-slate-200 pt-6">
+                            {(() => {
+                              const signature = data.visitSignatures?.find(s => s.visitId === visit.id);
+                              
+                              // Check if current user is the one being visited
+                              // or if current user is admin/supervisor (they just see it)
+                              const isVisitedTeacher = externalProfile?.linkedTeacherId === visit.teacherId;
+                              
+                              // Condition: Signature only if evaluations are complete (all selected students have scores)
+                              const selectedStudents = visit.selectedStudentIds || [];
+                              const evaluatedStudentCount = Object.keys(visit.studentQuizScores || {}).length;
+                              const isCompleted = selectedStudents.length > 0 && evaluatedStudentCount >= selectedStudents.length;
+
+                              const handleSign = async () => {
+                                if (!externalProfile?.linkedTeacherId) return;
+                                await firestoreService.saveVisitSignature(
+                                  visit.id,
+                                  externalProfile.linkedTeacherId,
+                                  externalProfile.name
+                                );
+                              };
+
+                              return (
+                                <SignatureBox 
+                                  isCompleted={isCompleted}
+                                  onSign={handleSign}
+                                  signature={signature}
+                                  label="توقيع المعلم المزار (للاطلاع)"
+                                  requirementText="لا يمكن التوقيع إلا بعد رصد درجات جميع الطلاب المستهدفين"
+                                  userName={externalProfile?.name || ""}
+                                />
+                              );
+                            })()}
+                          </div>
                         </div>
                       )}
                     </div>

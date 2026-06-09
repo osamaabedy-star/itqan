@@ -62,7 +62,10 @@ import {
   GraduationCap,
   Key,
   ArrowLeft,
-  Clock
+  Clock,
+  Sun,
+  Moon,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -232,12 +235,78 @@ export default function App() {
   const [evaluations, setEvaluations] = useState<Evaluations>({});
   const [loading, setLoading] = useState(true);
   const [baseAcademicYear, setBaseAcademicYear] = useState('2025-2026');
-  const [activeTerm, setActiveTerm] = useState<'term1' | 'term2'>('term1');
+  const [activeTerm, setActiveTerm] = useState<'term1' | 'term2' | 'full'>(() => {
+    try {
+      const saved = localStorage.getItem('itqan-active-term');
+      return (saved as 'term1' | 'term2' | 'full') || 'full';
+    } catch { return 'full'; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('itqan-active-term', activeTerm);
+  }, [activeTerm]);
+
   const academicYear = `${baseAcademicYear}-${activeTerm}`;
   const displayYear = baseAcademicYear;
 
+  const effectiveEvaluations = useMemo(() => {
+    if (activeTerm !== 'full') return evaluations;
+    
+    const merged: Evaluations = {};
+    const studentSkillPairs = new Set<string>();
+    
+    Object.keys(evaluations).forEach(key => {
+      const lastDashIndex = key.lastIndexOf('-');
+      if (lastDashIndex !== -1) {
+        const studentSkillPart = key.substring(0, lastDashIndex);
+        const termPart = key.substring(lastDashIndex + 1);
+        if (termPart === 'term1' || termPart === 'term2' || termPart === 'full') {
+           // We expect key format: studentId-skillId-year-term
+           // But actually year is also in there. Let's be more precise.
+           // Keys are: stId-skId-2025-2026-term1
+        }
+      }
+      
+      // Let's use a simpler approach: extract studentId-skillId and check all 3 term suffixes
+      // The keys are usually `${st.id}-${sk.id}-${academicYear}`
+    });
+
+    // Actually, let's just iterate all evaluations and for each student-skill, pick the latest
+    const latestByStudentSkill = new Map<string, any>();
+    
+    Object.entries(evaluations).forEach(([key, val]) => {
+      const parts = key.split('-');
+      if (parts.length < 3) return;
+      
+      // Extract studentId and skillId. 
+      // Key format: studentId-skillId-baseYear-term
+      // Example: st123-sk456-2025-2026-term1
+      const term = parts[parts.length - 1];
+      if (term !== 'term1' && term !== 'term2' && term !== 'full') return;
+      
+      const studentSkillKey = parts.slice(0, parts.length - 1).join('-'); // Includes baseYear
+      
+      const currentLatest = latestByStudentSkill.get(studentSkillKey);
+      const getMs = (e: any) => e?.updatedAt?.seconds ? e.updatedAt.seconds * 1000 : (e?.updatedAt ? new Date(e.updatedAt).getTime() : 0);
+      
+      if (!currentLatest || getMs(val) > getMs(currentLatest)) {
+        latestByStudentSkill.set(studentSkillKey, val);
+      }
+    });
+
+    latestByStudentSkill.forEach((val, studentSkillKey) => {
+      merged[`${studentSkillKey}-full`] = val;
+    });
+
+    return merged;
+  }, [evaluations, activeTerm, baseAcademicYear]);
+
   const toggleTerm = () => {
-    setActiveTerm(prev => prev === 'term1' ? 'term2' : 'term1');
+    setActiveTerm(prev => {
+      if (prev === 'term1') return 'term2';
+      if (prev === 'term2') return 'full';
+      return 'term1';
+    });
   };
 
   const [showStudentQuizPortal, setShowStudentQuizPortal] = useState(false);
@@ -294,27 +363,37 @@ export default function App() {
     }
   }, [studentSession]);
 
-  const filteredSupervisorAppData = useMemo(() => {
-    if (!externalProfile || externalProfile.role !== 'supervisor') return appData;
-    if (!externalProfile.supervisorType || externalProfile.supervisorType === 'general') return appData;
+  const termFilteredAppData = useMemo(() => {
+    return {
+      ...appData,
+      quizzes: appData.quizzes.filter(q => activeTerm === 'full' || !q.term || q.term === 'full' || q.term === activeTerm),
+      visits: appData.visits.filter(v => activeTerm === 'full' || !v.term || v.term === 'full' || v.term === activeTerm),
+      skills: appData.skills.filter(sk => activeTerm === 'full' || !sk.term || sk.term === 'full' || sk.term === activeTerm),
+    };
+  }, [appData, activeTerm]);
 
+  const filteredSupervisorAppData = useMemo(() => {
+    if (!externalProfile || externalProfile.role !== 'supervisor') return termFilteredAppData;
+    if (!externalProfile.supervisorType || externalProfile.supervisorType === 'general') return termFilteredAppData;
+
+    const sourceData = termFilteredAppData;
     const allowedGradeIds = externalProfile.allowedGradeIds || [];
     const allowedClassIds = externalProfile.allowedClassIds || [];
 
     // Filter grades
-    const filteredGrades = appData.grades.filter(g => {
+    const filteredGrades = sourceData.grades.filter(g => {
       if (externalProfile.supervisorType === 'stage') {
         return allowedGradeIds.includes(g.id);
       }
       if (externalProfile.supervisorType === 'classes') {
-        return appData.classes.some(c => c.gradeId === g.id && allowedClassIds.includes(c.id));
+        return sourceData.classes.some(c => c.gradeId === g.id && allowedClassIds.includes(c.id));
       }
       return true;
     });
     const filteredGradeIds = filteredGrades.map(g => g.id);
 
     // Filter classes
-    const filteredClasses = appData.classes.filter(c => {
+    const filteredClasses = sourceData.classes.filter(c => {
       if (externalProfile.supervisorType === 'stage') {
         return filteredGradeIds.includes(c.gradeId);
       }
@@ -326,11 +405,11 @@ export default function App() {
     const filteredClassIds = filteredClasses.map(c => c.id);
 
     // Filter students
-    const filteredStudents = appData.students.filter(s => filteredClassIds.includes(s.classId));
+    const filteredStudents = sourceData.students.filter(s => filteredClassIds.includes(s.classId));
     const filteredStudentIds = filteredStudents.map(s => s.id);
 
     // Filter subjects
-    const filteredSubjects = appData.subjects.filter(sub => {
+    const filteredSubjects = sourceData.subjects.filter(sub => {
       if (sub.isArchived) return false;
       const isGradeAllowed = filteredGradeIds.includes(sub.gradeId);
       if (!isGradeAllowed) return false;
@@ -343,10 +422,10 @@ export default function App() {
     });
 
     // Filter skills
-    const filteredSkills = appData.skills.filter(sk => filteredGradeIds.includes(sk.gradeId));
+    const filteredSkills = sourceData.skills.filter(sk => filteredGradeIds.includes(sk.gradeId));
 
     // Filter quizzes
-    const filteredQuizzes = appData.quizzes.filter(q => {
+    const filteredQuizzes = sourceData.quizzes.filter(q => {
       if (q.isArchived) return false;
       if (q.gradeId && !filteredGradeIds.includes(q.gradeId)) return false;
       if (q.classIds && q.classIds.length > 0) {
@@ -357,18 +436,20 @@ export default function App() {
     const filteredQuizIds = filteredQuizzes.map(q => q.id);
 
     // Filter quizResults
-    const filteredQuizResults = (appData.quizResults || []).filter(r => 
+    const filteredQuizResults = (sourceData.quizResults || []).filter(r => 
       filteredStudentIds.includes(r.studentId) && filteredQuizIds.includes(r.quizId)
     );
 
     // Filter visits
-    const filteredVisits = appData.visits.filter(v => {
-      if (v.classId) return filteredClassIds.includes(v.classId);
+    const filteredVisits = sourceData.visits.filter(v => {
+      const classId = v.targetClassId || v.classId;
+      if (v.creatorId === externalProfile.id) return true;
+      if (classId) return filteredClassIds.includes(classId);
       return true; 
     });
 
     // Filter teachers (only those instructionally connected to our filtered classes)
-    const filteredTeachers = appData.teachers.filter(t => {
+    const filteredTeachers = sourceData.teachers.filter(t => {
       if (t.isArchived) return false;
       
       const isClassTeacher = filteredClasses.some(c => c.teacherIds?.includes(t.id));
@@ -381,7 +462,7 @@ export default function App() {
     });
 
     return {
-      ...appData,
+      ...sourceData,
       grades: filteredGrades,
       classes: filteredClasses,
       students: filteredStudents,
@@ -392,47 +473,38 @@ export default function App() {
       visits: filteredVisits,
       teachers: filteredTeachers
     };
-  }, [appData, externalProfile]);
+  }, [termFilteredAppData, externalProfile]);
 
   const filteredSupervisorEvaluations = useMemo(() => {
-    if (!externalProfile || externalProfile.role !== 'supervisor') return evaluations;
-    if (!externalProfile.supervisorType || externalProfile.supervisorType === 'general') return evaluations;
-
-    const allowedGradeIds = externalProfile.allowedGradeIds || [];
+    if (!externalProfile || externalProfile.role !== 'supervisor') return effectiveEvaluations;
+    if (!externalProfile.supervisorType || externalProfile.supervisorType === 'general') return effectiveEvaluations;
+    
+    // Use the already term-filtered data for faster lookup of ids
+    const sourceData = termFilteredAppData;
     const allowedClassIds = externalProfile.allowedClassIds || [];
-
-    const filteredGrades = appData.grades.filter(g => {
+    
+    const filteredClassIds = sourceData.classes.filter(c => {
       if (externalProfile.supervisorType === 'stage') {
-        return allowedGradeIds.includes(g.id);
-      }
-      if (externalProfile.supervisorType === 'classes') {
-        return appData.classes.some(c => c.gradeId === g.id && allowedClassIds.includes(c.id));
-      }
-      return true;
-    });
-    const filteredGradeIds = filteredGrades.map(g => g.id);
-
-    const filteredClasses = appData.classes.filter(c => {
-      if (externalProfile.supervisorType === 'stage') {
-        return filteredGradeIds.includes(c.gradeId);
+        const allowedGradeIds = externalProfile.allowedGradeIds || [];
+        return allowedGradeIds.includes(c.gradeId);
       }
       if (externalProfile.supervisorType === 'classes') {
         return allowedClassIds.includes(c.id);
       }
       return true;
-    });
-    const filteredClassIds = filteredClasses.map(c => c.id);
-    const filteredStudentIds = new Set(appData.students.filter(s => filteredClassIds.includes(s.classId)).map(s => s.id));
+    }).map(c => c.id);
+
+    const filteredStudentIds = new Set(sourceData.students.filter(s => filteredClassIds.includes(s.classId)).map(s => s.id));
 
     const result: Record<string, Evaluation> = {};
-    Object.keys(evaluations).forEach(key => {
+    Object.keys(effectiveEvaluations).forEach(key => {
       const studentId = key.split('-')[0];
       if (filteredStudentIds.has(studentId)) {
-        result[key] = evaluations[key];
+        result[key] = effectiveEvaluations[key];
       }
     });
     return result;
-  }, [evaluations, appData, externalProfile]);
+  }, [effectiveEvaluations, termFilteredAppData, externalProfile]);
 
   const [loginRole, setLoginRole] = useState<'admin' | 'teacher' | 'supervisor' | 'student'>('student');
   const [studentPortalTab, setStudentPortalTab] = useState<'quizzes' | 'quiz-reports' | 'skills-reports'>('quizzes');
@@ -468,8 +540,10 @@ export default function App() {
         try {
           await firestoreService.login();
           setLoginRole('admin');
+          firestoreService.logActivity('LOGIN_ADMIN', 'admin', auth.currentUser?.uid || 'admin', auth.currentUser?.email || '');
         } catch (err) {
           setLoginError('فشل تسجيل الدخول كمسؤول. الرجاء تكرار المحاولة.');
+          firestoreService.logActivity('LOGIN_FAIL_ADMIN', 'admin', 'unknown');
         } finally {
           setIsLoginProcessing(false);
         }
@@ -486,6 +560,7 @@ export default function App() {
           setExternalProfileState(p);
           setView('external-portal');
           setIsLoginProcessing(false);
+          firestoreService.logActivity('LOGIN_EXTERNAL', p.role, p.id, p.name);
           return;
         }
       } catch (err) {
@@ -522,8 +597,10 @@ export default function App() {
         setStudentSession(student);
         setShowStudentQuizPortal(true);
         setView('student-portal');
+        firestoreService.logActivity('LOGIN_STUDENT', 'student', student.id, student.name);
       } else {
         setLoginError('عذراً، لم يتم العثور على هذا السجل في النظام.');
+        firestoreService.logActivity('LOGIN_FAIL_INPUT', 'unknown', input);
       }
     } catch (err: any) {
       console.error(err);
@@ -847,7 +924,7 @@ export default function App() {
     if (relevantSkills.length > 0) {
       classStudents.forEach(st => {
         relevantSkills.forEach(sk => {
-          const evalData = evaluations[`${st.id}-${sk.id}-${academicYear}`];
+          const evalData = effectiveEvaluations[`${st.id}-${sk.id}-${academicYear}`];
           const score = evalData?.score;
           if (score) {
             maxPoints += 4;
@@ -889,7 +966,7 @@ export default function App() {
     
     let points = 0;
     subjectSkills.forEach(sk => {
-      const evalData = evaluations[`${studentId}-${sk.id}-${academicYear}`];
+      const evalData = effectiveEvaluations[`${studentId}-${sk.id}-${academicYear}`];
       const score = evalData?.score;
       if (score === 'mastered') points += 4;
       else if (score === 'advanced') points += 3;
@@ -1037,8 +1114,10 @@ export default function App() {
 
   const isOuterNavbarVisible = isUserAdmin && !isTeacherReportMode && view !== 'external-portal' && view !== 'student-portal';
 
+  // Unified check for view state
+
   return (
-      <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-800 overflow-hidden print:h-auto print:bg-white print:overflow-visible print:block" dir="rtl">
+      <div className={`h-screen flex flex-col font-sans overflow-hidden print:h-auto print:bg-white print:overflow-visible print:block transition-colors duration-300 ${theme === 'dark' ? 'theme-dark' : theme === 'calm' ? 'theme-calm' : 'bg-slate-50'}`} dir="rtl">
         {isOuterNavbarVisible && (
           <div className="print:hidden flex flex-col">
             <Navbar 
@@ -1048,14 +1127,14 @@ export default function App() {
               onYearChange={setBaseAcademicYear} 
               activeTerm={activeTerm}
               onTermChange={setActiveTerm}
-              teachers={appData.teachers.filter(t => !t.isArchived)}
+              teachers={filteredSupervisorAppData.teachers.filter(t => !t.isArchived)}
               selectedTeacherId={globalFilterTeacherId}
               onTeacherChange={setGlobalFilterTeacherId}
               theme={theme}
               onThemeChange={setTheme}
               onGoBack={handleGoBack}
               canGoBack={view !== 'dashboard' && view !== 'login' && view !== 'student-portal' && view !== 'external-portal'}
-              schoolLogoUrl={appData.settings?.[0]?.schoolLogoUrl}
+              schoolLogoUrl={filteredSupervisorAppData.settings?.[0]?.schoolLogoUrl}
             />
             <Breadcrumb 
               view={view}
@@ -1074,8 +1153,8 @@ export default function App() {
         <AnimatePresence mode="wait">
           {view === 'dashboard' && (
             <Dashboard 
-              data={appData} 
-              evaluations={evaluations}
+              data={filteredSupervisorAppData} 
+              evaluations={filteredSupervisorEvaluations}
               academicYear={academicYear}
               activeTerm={activeTerm}
               onNavigate={handleNavigateToView}
@@ -1092,10 +1171,11 @@ export default function App() {
 
           {view === 'visits' && (
             <Visits 
-              data={appData}
-              evaluations={evaluations}
+              data={filteredSupervisorAppData}
+              evaluations={filteredSupervisorEvaluations}
               academicYear={academicYear}
               activeTerm={activeTerm}
+              externalProfile={externalProfile}
             />
           )}
 
@@ -1114,13 +1194,16 @@ export default function App() {
                      setView('login');
                    }}
                    onToggleTerm={toggleTerm}
+                   onSetTerm={setActiveTerm}
+                   theme={theme}
+                   onThemeChange={setTheme}
                    calculatePerformance={calculatePerformance}
                    onClose={handleGoBack}
                 />
               ) : (
                 <TeacherDashboard 
-                   data={appData}
-                   evaluations={evaluations}
+                   data={filteredSupervisorAppData}
+                   evaluations={filteredSupervisorEvaluations}
                    academicYear={academicYear}
                    displayYear={baseAcademicYear}
                    activeTerm={activeTerm}
@@ -1130,6 +1213,9 @@ export default function App() {
                      setView('login');
                    }}
                    onToggleTerm={toggleTerm}
+                   onSetTerm={setActiveTerm}
+                   theme={theme}
+                   onThemeChange={setTheme}
                    calculatePerformance={calculatePerformance}
                 />
               )}
@@ -1143,32 +1229,52 @@ export default function App() {
                 <div className="bg-white rounded-3xl p-6 text-slate-800 shadow-sm border border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <div className="p-1 border border-slate-100 rounded-2xl bg-[#faf9f6] shrink-0">
-                      <SchoolLogo size={70} showText={false} imageUrl={appData.settings?.[0]?.schoolLogoUrl} />
+                      <SchoolLogo size={70} showText={false} imageUrl={filteredSupervisorAppData.settings?.[0]?.schoolLogoUrl} />
                     </div>
                     <div className="space-y-0.5">
                       <h1 className="text-xl font-black text-slate-900">{studentSession.name}</h1>
                       <div className="flex items-center gap-3 text-slate-500 text-[10px] font-bold">
-                         <span>{appData.grades.find(g => g.id === appData.classes.find(c => c.id === studentSession.classId)?.gradeId)?.name || 'الصف'}</span>
+                         <span>{filteredSupervisorAppData.grades.find(g => g.id === filteredSupervisorAppData.classes.find(c => c.id === studentSession.classId)?.gradeId)?.name || 'الصف'}</span>
                          <span>|</span>
-                         <span>الفصل: {appData.classes.find(c => c.id === studentSession.classId)?.name || 'أ'}</span>
+                         <span>الفصل: {filteredSupervisorAppData.classes.find(c => c.id === studentSession.classId)?.name || 'أ'}</span>
                          <span>|</span>
                          <span>{displayYear}</span>
                       </div>
                     </div>
                   </div>
                     
-                  {/* Logout button */}
-                  <button 
-                    onClick={() => {
-                      setStudentSession(null);
-                      setShowStudentQuizPortal(false);
-                      handleNavigateToView('login');
-                    }}
-                    className="px-4 h-9 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all mr-auto sm:mr-0 cursor-pointer"
-                  >
-                    <LogOut size={14} />
-                    <span>خروج</span>
-                  </button>
+                  {/* Theme and Logout buttons */}
+                  <div className="flex items-center gap-2 mr-auto sm:mr-0">
+                    <button 
+                      onClick={() => {
+                        if (theme === 'light') setTheme('dark');
+                        else if (theme === 'dark') setTheme('calm');
+                        else setTheme('light');
+                      }}
+                      className="px-4 h-9 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center gap-2 hover:bg-white transition-all cursor-pointer shadow-sm text-slate-600 outline-none"
+                    >
+                      {theme === 'light' && <Sun size={14} className="text-amber-500" />}
+                      {theme === 'dark' && <Moon size={14} className="text-indigo-400" />}
+                      {theme === 'calm' && <Sparkles size={14} className="text-amber-600" />}
+                      <span className="text-[10px] font-black hidden lg:inline">
+                        {theme === 'light' && 'المظهر الفاتح'}
+                        {theme === 'dark' && 'المظهر الليلي'}
+                        {theme === 'calm' && 'المظهر الهادئ'}
+                      </span>
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        setStudentSession(null);
+                        setShowStudentQuizPortal(false);
+                        handleNavigateToView('login');
+                      }}
+                      className="px-4 h-9 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all cursor-pointer"
+                    >
+                      <LogOut size={14} />
+                      <span>خروج</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Available Quizzes & Reports Tabs */}
@@ -1751,21 +1857,26 @@ export default function App() {
 
           {view === 'management' && isAdmin && (
             <Management 
-              data={appData} 
-              evaluations={evaluations} 
+              data={filteredSupervisorAppData} 
+              evaluations={filteredSupervisorEvaluations} 
               onClose={() => handleNavigateToView('dashboard')} 
               filterTeacherId={globalFilterTeacherId}
               onFilterTeacherChange={setGlobalFilterTeacherId}
               onSelectStudent={(st) => { setSelectedStudent(st); handleNavigateToView('student-profile'); }}
               academicYear={academicYear}
+              activeTerm={activeTerm}
+              onSetTerm={setActiveTerm}
+              theme={theme}
+              onThemeChange={setTheme}
             />
           )}
 
           {view === 'quiz-report' && selectedQuiz && (
              <QuizReport
                quiz={selectedQuiz}
-               data={appData}
+               data={filteredSupervisorAppData}
                filterTeacherId={globalFilterTeacherId}
+               externalProfile={externalProfile}
                onClose={() => {
                  handleNavigateToView(selectedTeacher ? 'teacher-profile' : 'dashboard');
                  setSelectedQuiz(null);
@@ -1788,11 +1899,11 @@ export default function App() {
                <QuizPlayer 
                  quiz={selectedQuiz} 
                  student={studentObj} 
-                 classStudents={selectedStudent ? appData.students.filter(s => s.classId === selectedStudent.classId && !s.isArchived) : undefined}
-                 quizResults={appData.quizResults}
+                  classStudents={selectedStudent ? filteredSupervisorAppData.students.filter(s => s.classId === selectedStudent.classId && !s.isArchived) : undefined}
+                 quizResults={filteredSupervisorAppData.quizResults}
                  onSelectStudent={setSelectedStudent}
-                 allSkills={appData.skills}
-                 allSubjects={appData.subjects}
+                 allSkills={filteredSupervisorAppData.skills}
+                 allSubjects={filteredSupervisorAppData.subjects}
                  academicYear={academicYear}
                  onClose={() => { 
                   if (studentSession) {
@@ -1815,7 +1926,7 @@ export default function App() {
 
           {view === 'quiz-login' && (
             <QuizLogin 
-              data={appData} 
+              data={filteredSupervisorAppData} 
               onSelect={(q, st) => { setSelectedQuiz(q); setSelectedStudent(st); handleNavigateToView('quiz'); }} 
               onClose={handleGoBack} 
             />
@@ -1823,8 +1934,8 @@ export default function App() {
 
           {view === 'quick-matrix' && (
             <MonitoringMatrix 
-              data={appData}
-              evaluations={evaluations}
+              data={filteredSupervisorAppData}
+              evaluations={filteredSupervisorEvaluations}
               setEvaluations={setEvaluations}
               academicYear={academicYear}
               activeTerm={activeTerm}
@@ -1838,7 +1949,7 @@ export default function App() {
           {view === 'teacher-profile' && selectedTeacher && (
             <TeacherProfile 
               teacher={selectedTeacher}
-              data={appData}
+              data={filteredSupervisorAppData}
               calculatePerformance={calculatePerformance}
               onClose={() => {
                 handleNavigateToView(previousTeacherView || 'dashboard');
@@ -1851,10 +1962,13 @@ export default function App() {
           {view === 'student-profile' && selectedStudent && (
             <StudentProfile 
               student={selectedStudent}
-              data={appData}
-              evaluations={evaluations}
+              data={filteredSupervisorAppData}
+              evaluations={filteredSupervisorEvaluations}
               academicYear={academicYear}
               activeTerm={activeTerm}
+              onSetTerm={setActiveTerm}
+              theme={theme}
+              onThemeChange={setTheme}
               onClose={() => {
                 handleGoBack();
               }}
@@ -1985,7 +2099,7 @@ export default function App() {
                   </div>
                   
                   <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1 scrollbar-hide">
-                     {appData.students
+                     {filteredSupervisorAppData.students
                        .filter(s => s.classId === selectedClass.id && !s.isArchived)
                        .filter(s => s.name.includes(studentSearch))
                        .map(s => (
@@ -2640,8 +2754,8 @@ export default function App() {
 
           {view === 'reports' && (
             <ProfessionalReports 
-              data={appData} 
-              evaluations={evaluations} 
+              data={filteredSupervisorAppData} 
+              evaluations={filteredSupervisorEvaluations} 
               academicYear={academicYear}
               displayYear={displayYear}
               activeTerm={activeTerm}

@@ -1,16 +1,29 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Users, BookOpen, AlertTriangle, ChevronRight, CheckCircle2 } from 'lucide-react';
-import { AppData, Student, Quiz, QuizResult, Class } from '../types';
+import { AppData, Student, Quiz, QuizResult, Class, SkillSignature, Skill, Evaluations } from '../types';
+import { SignatureBox } from './SignatureBox';
+import { firestoreService } from '../services/firestoreService';
 
 interface ClassDetailViewProps {
   data: AppData;
   classId: string;
   onBack: () => void;
   teacherId: string;
+  externalProfileName: string;
+  academicYear: string;
+  evaluations: Evaluations;
 }
 
-export const ClassDetailView: React.FC<ClassDetailViewProps> = ({ data, classId, onBack, teacherId }) => {
+export const ClassDetailView: React.FC<ClassDetailViewProps> = ({ 
+  data, 
+  classId, 
+  onBack, 
+  teacherId, 
+  externalProfileName, 
+  academicYear,
+  evaluations
+}) => {
   const currentClass = data.classes.find(c => c.id === classId);
   const classStudents = useMemo(() => 
     data.students.filter(s => s.classId === classId && !s.isArchived),
@@ -116,6 +129,65 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({ data, classId,
                 <div key={quiz.id} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-100 rounded-xl">
                   <span className="font-bold text-slate-700 text-[11px] truncate max-w-[150px]">{quiz.title}</span>
                   <span className={`font-black text-[11px] ${avg >= 70 ? 'text-emerald-600' : 'text-indigo-600'}`}>{avg}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Skills Assessment & Signatures */}
+      <div className="space-y-6">
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+          <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+            <CheckCircle2 size={20} className="text-indigo-600" />
+            توثيق المهارات (التواقيع)
+          </h3>
+          
+          <div className="space-y-4">
+            {teacherSubjectsForClass.map(subject => {
+              const skills = data.skills.filter(sk => !sk.isArchived && (sk.subjectId === subject.id || (sk.subjectName === subject.name && sk.gradeId === subject.gradeId)));
+              const students = classStudents;
+              
+              const totalEvaluationsNeeded = skills.length * students.length;
+              let evaluationsCount = 0;
+              students.forEach(st => {
+                skills.forEach(sk => {
+                  if (evaluations[`${st.id}-${sk.id}-${academicYear}`]) {
+                    evaluationsCount++;
+                  }
+                });
+              });
+
+              const isCompleted = totalEvaluationsNeeded > 0 && evaluationsCount >= totalEvaluationsNeeded;
+              const signature = data.skillSignatures?.find(s => s.classId === classId && s.subjectId === subject.id && s.academicYear === academicYear);
+
+              const handleSign = async () => {
+                await firestoreService.saveSkillSignature(
+                  classId,
+                  subject.id,
+                  academicYear,
+                  teacherId,
+                  externalProfileName
+                );
+              };
+
+              return (
+                <div key={subject.id} className="space-y-2">
+                  <div className="flex items-center justify-between px-2">
+                    <p className="text-xs font-black text-slate-700">{subject.name}</p>
+                    <p className="text-[10px] font-bold text-slate-400">
+                      إنجاز التقييم: {evaluationsCount} / {totalEvaluationsNeeded} ({totalEvaluationsNeeded > 0 ? Math.round((evaluationsCount / totalEvaluationsNeeded) * 100) : 0}%)
+                    </p>
+                  </div>
+                  <SignatureBox 
+                    isCompleted={isCompleted}
+                    onSign={handleSign}
+                    signature={signature}
+                    label={`توقيع إتمام مهارات ${subject.name}`}
+                    requirementText="يجب تقييم جميع طلاب الفصل في كافة مهارات المادة أولاً"
+                    userName={externalProfileName}
+                  />
                 </div>
               );
             })}

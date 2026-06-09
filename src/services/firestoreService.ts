@@ -90,6 +90,9 @@ export const firestoreService = {
         updatedAt: serverTimestamp(),
         evaluatorId: userId
       }, { merge: true });
+      
+      // Log evaluation activity
+      this.logActivity('SAVE_EVALUATION', 'user', userId, '', { studentId, skillId, score });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }
@@ -138,7 +141,9 @@ export const firestoreService = {
   },
 
   async logout() {
+    const userId = auth.currentUser?.uid || 'anonymous';
     try {
+      this.logActivity('LOGOUT', 'user', userId);
       await signOut(auth);
     } catch (error) {
       console.error('Logout error:', error);
@@ -155,15 +160,19 @@ export const firestoreService = {
         updatedAt: serverTimestamp(),
         createdBy: userId
       }, { merge: true });
+      
+      this.logActivity('SAVE_ITEM', 'admin', userId, '', { collection: collectionName, itemId: id });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }
   },
 
   async deleteItem(collectionName: string, id: string) {
+    const userId = auth.currentUser?.uid || 'anonymous_user';
     const path = `${collectionName}/${id}`;
     try {
       await deleteDoc(doc(db, collectionName, id));
+      this.logActivity('DELETE_ITEM', 'admin', userId, '', { collection: collectionName, itemId: id });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
@@ -228,6 +237,25 @@ export const firestoreService = {
     }
   },
 
+  async logActivity(action: string, role: string, userId: string, userName: string = '', details: any = {}) {
+    const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const path = `activityLogs/${logId}`;
+    try {
+      await setDoc(doc(db, 'activityLogs', logId), {
+        id: logId,
+        userId,
+        userName,
+        role,
+        action,
+        details: typeof details === 'string' ? details : JSON.stringify(details),
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      // Background logging shouldn't crash the app, but we log to console
+      handleFirestoreError(error, OperationType.WRITE, path, false);
+    }
+  },
+
   async saveQuizResult(result: any) {
     const id = `${result.studentId}_${result.quizId}`;
     
@@ -239,9 +267,70 @@ export const firestoreService = {
         ...cleanResult,
         updatedAt: serverTimestamp()
       });
+      
+      this.logActivity('QUIZ_SUBMIT', 'student', result.studentId, result.studentName || '', { quizId: result.quizId, score: result.score });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `quizResults/${id}`);
       throw error;
+    }
+  },
+
+  async saveQuizSignature(quizId: string, teacherId: string, teacherName: string, signatureText: string = '') {
+    const id = `${quizId}_${teacherId}`;
+    try {
+      await setDoc(doc(db, 'quizSignatures', id), {
+        id,
+        quizId,
+        teacherId,
+        teacherName,
+        signatureText,
+        signed: true,
+        signedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp()
+      });
+      this.logActivity('QUIZ_SIGN', 'teacher', teacherId, teacherName, { quizId });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `quizSignatures/${id}`);
+    }
+  },
+
+  async saveSkillSignature(classId: string, subjectId: string, academicYear: string, teacherId: string, teacherName: string, signatureText: string = '') {
+    const id = `${classId}_${subjectId}_${academicYear}`;
+    try {
+      await setDoc(doc(db, 'skillSignatures', id), {
+        id,
+        classId,
+        subjectId,
+        academicYear,
+        teacherId,
+        teacherName,
+        signatureText,
+        signed: true,
+        signedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp()
+      });
+      this.logActivity('SKILL_SIGN', 'teacher', teacherId, teacherName, { classId, subjectId });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `skillSignatures/${id}`);
+    }
+  },
+
+  async saveVisitSignature(visitId: string, teacherId: string, teacherName: string, signatureText: string = '') {
+    const id = `${visitId}_${teacherId}`;
+    try {
+      await setDoc(doc(db, 'visitSignatures', id), {
+        id,
+        visitId,
+        teacherId,
+        teacherName,
+        signatureText,
+        signed: true,
+        signedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp()
+      });
+      this.logActivity('VISIT_SIGN', 'teacher', teacherId, teacherName, { visitId });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `visitSignatures/${id}`);
     }
   },
 

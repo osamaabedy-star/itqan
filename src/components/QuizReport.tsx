@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
-import { Quiz, AppData, Student } from '../types';
-import { ArrowRight, BrainCircuit, CheckCircle2, Users, Eye, XCircle, LayoutGrid, Printer, Calendar, User } from 'lucide-react';
+import { Quiz, AppData, Student, ExternalProfile, QuizSignature } from '../types';
+import { ArrowRight, BrainCircuit, CheckCircle2, Users, Eye, XCircle, LayoutGrid, Printer, Calendar, User, PenTool, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { SignatureBox } from './SignatureBox';
+import { firestoreService } from '../services/firestoreService';
 
 interface QuizReportProps {
   quiz: Quiz;
@@ -9,6 +11,7 @@ interface QuizReportProps {
   onClose: () => void;
   onPreviewQuiz: () => void;
   filterTeacherId?: string;
+  externalProfile?: ExternalProfile | null;
 }
 
 const getTimestampMs = (updatedAt: any): number => {
@@ -19,7 +22,7 @@ const getTimestampMs = (updatedAt: any): number => {
   return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 };
 
-export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId }: QuizReportProps) {
+export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId, externalProfile }: QuizReportProps) {
   const subject = data.subjects.find(s => s.id === quiz.subjectIds?.[0] || s.name === quiz.subjectName);
   const quizGrade = data.grades.find(g => g.id === quiz.gradeId);
   const teacher = data.teachers.find(t => t.id === quiz.teacherId) || data.teachers.find(t => t.id === subject?.teacherId);
@@ -391,6 +394,36 @@ export function QuizReport({ quiz, data, onClose, onPreviewQuiz, filterTeacherId
               </div>
            </div>
         </div>
+      </div>
+
+      {/* Teacher Signature Section */}
+      <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-minimal print:hidden mt-8">
+        {(() => {
+          const signature = data.quizSignatures?.find(s => s.quizId === quiz.id);
+          const resultsCount = results.length;
+          const expectedCount = targetStudents.length;
+          const isCompleted = expectedCount > 0 && resultsCount >= expectedCount;
+          
+          const handleSign = async () => {
+            if (!externalProfile?.linkedTeacherId) return;
+            await firestoreService.saveQuizSignature(
+              quiz.id,
+              externalProfile.linkedTeacherId,
+              externalProfile.name
+            );
+          };
+
+          return (
+            <SignatureBox 
+              isCompleted={isCompleted}
+              onSign={handleSign}
+              signature={signature}
+              label="توقيع مراجعة الاختبار"
+              requirementText="لا يمكن التوقيع إلا بعد اختتام الاختبارات لجميع الطلاب"
+              userName={externalProfile?.name || ""}
+            />
+          );
+        })()}
       </div>
     </div>
   );

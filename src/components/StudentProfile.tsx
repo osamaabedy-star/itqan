@@ -19,7 +19,11 @@ import {
   XCircle,
   ChevronRight,
   BarChart3,
-  ChevronLeft
+  ChevronLeft,
+  Sun,
+  Moon,
+  Sparkles,
+  Calendar
 } from 'lucide-react';
 import { 
   Radar, 
@@ -53,6 +57,9 @@ interface StudentProfileProps {
   onStartQuiz: (quiz: Quiz) => void;
   academicYear: string;
   activeTerm: 'term1' | 'term2' | 'full';
+  onSetTerm?: (term: 'term1' | 'term2' | 'full') => void;
+  theme?: 'light' | 'dark' | 'calm';
+  onThemeChange?: (theme: 'light' | 'dark' | 'calm') => void;
 }
 
 const getTimestampMs = (updatedAt: any): number => {
@@ -63,7 +70,7 @@ const getTimestampMs = (updatedAt: any): number => {
   return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 };
 
-export function StudentProfile({ student, data, evaluations, onClose, onBack, onStartQuiz, academicYear, activeTerm }: StudentProfileProps) {
+export function StudentProfile({ student, data, evaluations, onClose, onBack, onStartQuiz, academicYear, activeTerm, onSetTerm, theme, onThemeChange }: StudentProfileProps) {
   const [activeTab, setActiveTab] = useState<'skills' | 'quizzes'>('skills');
   const [evaluatingSkill, setEvaluatingSkill] = useState<Skill | null>(null);
   const [selectedSkillDetails, setSelectedSkillDetails] = useState<Skill | null>(null);
@@ -204,12 +211,50 @@ export function StudentProfile({ student, data, evaluations, onClose, onBack, on
       >
         {/* Header Section */}
         <div className="bg-white p-6 pb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 shrink-0 relative">
-          <button 
-            onClick={onClose} 
-            className="absolute left-6 top-6 w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all active:scale-95"
-          >
-            <X size={18} />
-          </button>
+          <div className="absolute left-6 top-6 flex items-center gap-2">
+            {/* Term Selector */}
+            <div className="hidden md:flex items-center gap-1.5 bg-amber-50/50 px-2.5 py-1 rounded-lg border border-amber-100/50">
+               <Calendar size={12} className="text-amber-600" />
+               <select 
+                 value={activeTerm} 
+                 onChange={(e) => onSetTerm?.(e.target.value as any)}
+                 className="bg-transparent border-none outline-none font-black text-[9px] text-amber-700 cursor-pointer"
+               >
+                  <option value="full">العام الدراسي كامل</option>
+                  <option value="term1">الفصل الأول</option>
+                  <option value="term2">الفصل الثاني</option>
+               </select>
+            </div>
+
+            {/* Theme Toggler */}
+            {onThemeChange && (
+              <button 
+                onClick={() => {
+                  if (theme === 'light') onThemeChange('dark');
+                  else if (theme === 'dark') onThemeChange('calm');
+                  else onThemeChange('light');
+                }}
+                className="h-8 w-8 md:w-auto md:px-2.5 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center gap-2 hover:bg-white transition-all cursor-pointer shadow-sm text-slate-600 outline-none"
+                title="تغيير المظهر"
+              >
+                {theme === 'light' && <Sun size={14} className="text-amber-500" />}
+                {theme === 'dark' && <Moon size={14} className="text-indigo-400" />}
+                {theme === 'calm' && <Sparkles size={14} className="text-amber-600" />}
+                <span className="text-[9px] font-black hidden lg:inline">
+                  {theme === 'light' && 'فاتح'}
+                  {theme === 'dark' && 'ليلي'}
+                  {theme === 'calm' && 'هادئ'}
+                </span>
+              </button>
+            )}
+
+            <button 
+              onClick={onClose} 
+              className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-rose-50 flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all active:scale-95 border border-slate-100 shadow-sm"
+            >
+              <X size={18} />
+            </button>
+          </div>
           
           <div className="flex items-center gap-4 text-right">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-100 shrink-0">

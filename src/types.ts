@@ -145,6 +145,7 @@ export interface Visit {
   term?: 'term1' | 'term2' | 'full';
   isArchived?: boolean;
   evaluationData?: Record<string, number>; // Maps a criterion ID to a score
+  creatorId?: string;
   signed?: boolean;
   signatureName?: string;
   signatureData?: string;
@@ -192,6 +193,28 @@ export interface QuizSignature {
   signatureText?: string;
 }
 
+export interface SkillSignature {
+  id: string; // `${classId}_${subjectId}_${academicYear}`
+  classId: string;
+  subjectId: string;
+  teacherId: string;
+  teacherName: string;
+  academicYear: string;
+  signed: boolean;
+  signedAt: string;
+  signatureText?: string;
+}
+
+export interface VisitSignature {
+  id: string; // `${visitId}_${teacherId}`
+  visitId: string;
+  teacherId: string;
+  teacherName: string;
+  signed: boolean;
+  signedAt: string;
+  signatureText?: string;
+}
+
 export interface SupportPlanItem {
   key: string;
   title: string;
@@ -224,6 +247,8 @@ export interface AppData {
   rubrics?: Rubric[];
   externalProfiles?: ExternalProfile[];
   quizSignatures?: QuizSignature[];
+  skillSignatures?: SkillSignature[];
+  visitSignatures?: VisitSignature[];
   settings?: any[];
   supportPlans?: SupportPlan[];
 }

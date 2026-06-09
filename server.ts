@@ -11,7 +11,7 @@ async function generateContentWithRetry(ai: any, params: any, maxRetries = 5, in
   let attempt = 0;
   const originalModel = params.model || "gemini-3.5-flash";
   // Fallback models in case primary is overloaded
-  const fallbackModels = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"];
+  const fallbackModels = ["gemini-3.5-flash", "gemini-flash-latest"];
 
   while (true) {
     try {
@@ -193,6 +193,11 @@ ${text}
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        console.error("GEMINI_API_KEY is missing!");
+        return res.status(500).json({ error: "مفتاح الذكاء الاصطناعي (API KEY) غير متوفر." });
+      }
+
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {

@@ -23,7 +23,10 @@ import {
   Zap,
   CheckCircle2,
   Clock,
-  Briefcase
+  Briefcase,
+  Sun,
+  Moon,
+  Sparkles
 } from 'lucide-react';
 import { AppData, Evaluations, ExternalProfile, Class, Subject, Student, Skill, Quiz } from '../types';
 import { ClassDetailView } from './ClassDetailView';
@@ -40,11 +43,14 @@ interface TeacherDashboardProps {
   externalProfile: ExternalProfile;
   onLogout: () => void;
   onToggleTerm: () => void;
+  onSetTerm?: (term: 'term1' | 'term2' | 'full') => void;
+  theme?: 'light' | 'dark' | 'calm';
+  onThemeChange?: (theme: 'light' | 'dark' | 'calm') => void;
   calculatePerformance: (classId: string, subjectId?: string) => number;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ 
-  data, evaluations, academicYear, displayYear, activeTerm, externalProfile, onLogout, onToggleTerm, calculatePerformance 
+  data, evaluations, academicYear, displayYear, activeTerm, externalProfile, onLogout, onToggleTerm, onSetTerm, theme, onThemeChange, calculatePerformance 
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'classes' | 'visits' | 'reports'>('overview');
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -141,13 +147,42 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          <button 
-            onClick={onToggleTerm}
-            className="hidden md:flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-xl text-indigo-700 hover:bg-indigo-100 transition-colors"
-          >
-            <Calendar size={14} />
-            <span className="text-xs font-black">{activeTerm === 'term1' ? 'الفصل الدراسي الأول' : activeTerm === 'term2' ? 'الفصل الدراسي الثاني' : 'العام الدراسي كامل'}</span>
-          </button>
+          {/* Term Selector */}
+          <div className="hidden md:flex items-center gap-1.5 bg-amber-50/50 px-3 py-1.5 rounded-xl border border-amber-100/50">
+             <Calendar size={14} className="text-amber-600" />
+             <select 
+               value={activeTerm} 
+               onChange={(e) => onSetTerm?.(e.target.value as any)}
+               className="bg-transparent border-none outline-none font-black text-[11px] text-amber-700 cursor-pointer"
+             >
+                <option value="full">العام الدراسي كامل</option>
+                <option value="term1">الفصل الأول</option>
+                <option value="term2">الفصل الثاني</option>
+             </select>
+          </div>
+
+          {/* Theme Toggler */}
+          {onThemeChange && (
+            <button 
+              onClick={() => {
+                if (theme === 'light') onThemeChange('dark');
+                else if (theme === 'dark') onThemeChange('calm');
+                else onThemeChange('light');
+              }}
+              className="h-10 w-10 md:w-auto md:px-3 bg-white border border-slate-200 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 transition-all cursor-pointer shadow-sm text-slate-600 outline-none"
+              title="تغيير المظهر"
+            >
+              {theme === 'light' && <Sun size={16} className="text-amber-500" />}
+              {theme === 'dark' && <Moon size={16} className="text-indigo-400" />}
+              {theme === 'calm' && <Sparkles size={16} className="text-amber-600" />}
+              <span className="text-xs font-black hidden lg:inline">
+                {theme === 'light' && 'فاتح'}
+                {theme === 'dark' && 'ليلي'}
+                {theme === 'calm' && 'هادئ'}
+              </span>
+            </button>
+          )}
+
           <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-100 px-4 py-2 rounded-xl">
              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
              <span className="text-xs font-black text-slate-700">{externalProfile.name}</span>
@@ -350,6 +385,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                      classId={selectedClassId}
                      onBack={() => setSelectedClassId(null)}
                      teacherId={teacherId || ''}
+                     externalProfileName={externalProfile.name}
+                     academicYear={academicYear}
+                     evaluations={evaluations}
                    />
                 ) : (
                   <>

@@ -122,6 +122,27 @@ service cloud.firestore {
              data.signedAt is string;
     }
 
+    function isValidSkillSignature(data) {
+      return data.keys().hasAll(['id', 'classId', 'subjectId', 'teacherId', 'teacherName', 'signed', 'signedAt']) &&
+             data.id is string &&
+             isValidId(data.classId) &&
+             isValidId(data.subjectId) &&
+             isValidId(data.teacherId) &&
+             data.teacherName is string && data.teacherName.size() <= 200 &&
+             data.signed is bool &&
+             data.signedAt is string;
+    }
+
+    function isValidVisitSignature(data) {
+      return data.keys().hasAll(['id', 'visitId', 'teacherId', 'teacherName', 'signed', 'signedAt']) &&
+             data.id is string &&
+             isValidId(data.visitId) &&
+             isValidId(data.teacherId) &&
+             data.teacherName is string && data.teacherName.size() <= 200 &&
+             data.signed is bool &&
+             data.signedAt is string;
+    }
+
     function isValidExternalProfile(data) {
       return data.keys().hasAll(['id', 'name', 'role', 'createdAt']) &&
              data.id is string && data.id.size() <= 128 &&
@@ -147,6 +168,13 @@ service cloud.firestore {
              data.gradeId is string &&
              data.subjectName is string &&
              data.term in ['term1', 'term2', 'full'];
+    }
+
+    function isValidActivityLog(data) {
+      return data.keys().hasAll(['id', 'userId', 'action', 'timestamp']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.action is string && data.action.size() <= 128;
     }
 
     // --- Collection Routes ---
@@ -197,7 +225,7 @@ service cloud.firestore {
 
     match /quizzes/{quizId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidQuiz(incoming());
+      allow create, update: if isSignedIn() && isValidQuiz(incoming());
       allow delete: if isAdmin();
     }
 
@@ -229,6 +257,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /skillSignatures/{signatureId} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && isValidSkillSignature(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /visitSignatures/{signatureId} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && isValidVisitSignature(incoming());
+      allow delete: if isAdmin();
+    }
+
     match /settings/{settingId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
@@ -244,6 +284,12 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isAdmin() && isValidStudentBook(incoming());
       allow delete: if isAdmin();
+    }
+
+    match /activityLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isValidActivityLog(incoming());
+      allow update, delete: if isAdmin();
     }
   }
 }
