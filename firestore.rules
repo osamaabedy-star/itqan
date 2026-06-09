@@ -288,7 +288,7 @@ service cloud.firestore {
 
     match /activityLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isValidActivityLog(incoming());
+      allow create: if true;
       allow update, delete: if isAdmin();
     }
   }

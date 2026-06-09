@@ -7,18 +7,32 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Helper function to call generateContent with retry on transient errors
-async function generateContentWithRetry(ai: any, params: any, maxRetries = 5, initialDelay = 1000) {
+async function generateContentWithRetry(ai: any, params: any, maxRetries = 6, initialDelay = 2000) {
   let attempt = 0;
-  const originalModel = params.model || "gemini-flash-latest";
-  // Fallback models in case primary is overloaded
-  const fallbackModels = ["gemini-flash-latest", "gemini-2.0-flash-exp"];
+  // Use gemini-3.5-flash as the primary recommended model for text tasks
+  const originalModel = params.model || "gemini-3.5-flash";
+  
+  // Stable and supported models list from skill
+  const fallbackModels = [
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-1.5-flash-8b", // Sometimes available when others aren't
+  ];
+
+  // Ensure initial model is set
+  if (!params.model) params.model = originalModel;
 
   while (true) {
     try {
+      console.log(`[Gemini API] Calling ${params.model} (Attempt ${attempt + 1})`);
       return await ai.models.generateContent(params);
     } catch (error: any) {
       attempt++;
       const errorMsg = String(error?.stack || error?.message || error);
+      console.error(`[Gemini API] Failure on ${params.model}: ${errorMsg.substring(0, 400)}`);
+      
+      // Resource Exhausted (429) / Service Unavailable (503) / Internal Error (500)
       const isTransient = 
         errorMsg.includes("503") || 
         errorMsg.includes("429") || 
@@ -27,25 +41,46 @@ async function generateContentWithRetry(ai: any, params: any, maxRetries = 5, in
         errorMsg.includes("ResourceExhausted") || 
         errorMsg.includes("resource exhausted") ||
         errorMsg.includes("overloaded") ||
-        errorMsg.includes("temporarily unavailable") ||
-        errorMsg.includes("Service Unavailable");
+        errorMsg.includes("limit") ||
+        errorMsg.includes("quota");
 
-      if (attempt <= maxRetries && isTransient) {
-        // Change model if we encountered an issue & we are retrying
-        if (attempt >= 1) {
-          const nextModelIndex = (attempt - 1) % fallbackModels.length;
-          const targetFallback = fallbackModels[nextModelIndex];
-          if (params.model !== targetFallback) {
-            console.warn(`Smart Dynamic Fallback: Switching model from ${params.model} to ${targetFallback} to avoid transient overload.`);
-            params.model = targetFallback;
-          }
+      // Model Not Found (404)
+      const isNotFound = 
+        errorMsg.includes("404") || 
+        errorMsg.includes("NOT_FOUND") || 
+        errorMsg.includes("is not found") || 
+        errorMsg.includes("not supported") ||
+        errorMsg.includes("invalid model");
+
+      if (attempt <= maxRetries && (isTransient || isNotFound)) {
+        // Switch model for either 404 (wrong model) OR 429/503 (full for this model)
+        const nextModel = fallbackModels[attempt % fallbackModels.length];
+        
+        if (params.model !== nextModel) {
+          console.warn(`[Gemini API] Switching model from ${params.model} to ${nextModel} due to ${isNotFound ? '404' : '429/503'}`);
+          params.model = nextModel;
         }
 
-        const delay = initialDelay * Math.pow(2, attempt - 1);
-        console.warn(`Gemini API returned transient error (attempt ${attempt}/${maxRetries}): ${errorMsg}. Retrying in ${delay}ms...`);
+        // Increase delay significantly for quota issues
+        let delay = initialDelay * Math.pow(2.5, attempt - 1);
+        if (errorMsg.includes("429")) {
+          delay += 2000; // Extra buffer for quota
+          console.warn(`[Gemini API] Quota hit. Waiting extra long: ${delay}ms`);
+        }
+
+        console.warn(`[Gemini API] Retrying in ${Math.round(delay)}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
+      
+      // If we exhausted retries or hit a non-retryable error
+      if (errorMsg.includes("429") || errorMsg.includes("quota")) {
+        throw new Error("لقد تجاوزت حد الاستخدام اليومي للذكاء الاصطناعي (Quota Exceeded). يرجى المحاولة مرة أخرى بعد بضع دقائق أو في وقت لاحق.");
+      }
+      if (errorMsg.includes("503") || errorMsg.includes("UNAVAILABLE")) {
+        throw new Error("خدمة الذكاء الاصطناعي تعاني حالياً من ضغط شديد. يرجى المحاولة مرة أخرى بعد قليل.");
+      }
+      
       throw error;
     }
   }
@@ -105,7 +140,7 @@ ${text}
 -------------------------`;
 
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-flash-latest",
+        model: "gemini-3.5-flash",
         contents: promptRequest,
         config: {
           systemInstruction,
@@ -257,7 +292,7 @@ ${text}
       }
 
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-flash-latest",
+        model: "gemini-3.5-flash",
         contents: { parts: contents.map(item => typeof item === "string" ? { text: item } : item) },
         config: {
           systemInstruction,
@@ -348,7 +383,7 @@ ${text}
       contents.push({ text: promptRequest });
 
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-flash-latest",
+        model: "gemini-3.5-flash",
         contents: { parts: contents },
         config: {
           systemInstruction,
