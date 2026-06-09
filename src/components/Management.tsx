@@ -719,11 +719,20 @@ export function Management({
         }),
       });
 
-      const resData = await response.json();
+      const contentType = response.headers.get("content-type");
+      let resData;
+
+      if (contentType && contentType.includes("application/json")) {
+        resData = await response.json();
+      } else {
+        const textError = await response.text();
+        console.error("Unexpected non-JSON response:", textError);
+        throw new Error(`خطأ في استجابة الخادم: تلقى الخادم طلباً غير متوقع (ربما تعطل الخادم أو انتهت الجلسة). المتصفح استلم: ${textError.substring(0, 100)}...`);
+      }
 
       if (!response.ok) {
         throw new Error(
-          resData.error || resData.details || "فشل في توليد الأسئلة. يرجى التأكد من اتصال الإنترنت وصلاحية الحساب.",
+          resData.error || resData.details || resData.message || "فشل في توليد الأسئلة. يرجى التأكد من اتصال الإنترنت وصلاحية الحساب.",
         );
       }
 
@@ -838,10 +847,19 @@ export function Management({
         body: JSON.stringify({ text: batchAiText, metadata }),
       });
 
-      const resData = await response.json();
+      const contentType = response.headers.get("content-type");
+      let resData;
+
+      if (contentType && contentType.includes("application/json")) {
+        resData = await response.json();
+      } else {
+        const textError = await response.text();
+        console.error("Unexpected non-JSON response in Quiz Parser:", textError);
+        throw new Error(`خطأ في استجابة الخادم: تلقى الخادم طلباً غير متوقع (ربما تعطل الخادم أو انتهت الجلسة). المتصفح استلم: ${textError.substring(0, 100)}...`);
+      }
 
       if (!response.ok) {
-        throw new Error(resData.error || "فشل الاتصال بخدمة الذكاء الاصطناعي");
+        throw new Error(resData.error || resData.message || "فشل الاتصال بخدمة الذكاء الاصطناعي");
       }
 
       if (resData.success && Array.isArray(resData.quizzes)) {

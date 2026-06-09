@@ -9,9 +9,9 @@ dotenv.config();
 // Helper function to call generateContent with retry on transient errors
 async function generateContentWithRetry(ai: any, params: any, maxRetries = 5, initialDelay = 1000) {
   let attempt = 0;
-  const originalModel = params.model || "gemini-3.5-flash";
+  const originalModel = params.model || "gemini-flash-latest";
   // Fallback models in case primary is overloaded
-  const fallbackModels = ["gemini-3.5-flash", "gemini-flash-latest"];
+  const fallbackModels = ["gemini-flash-latest", "gemini-2.0-flash-exp"];
 
   while (true) {
     try {
@@ -59,7 +59,8 @@ async function startServer() {
   app.use(express.json({ limit: "15mb" }));
   app.use(express.urlencoded({ limit: "15mb", extended: true }));
 
-  // API Routes MUST go before Vite middlewares
+  // Health check
+  app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
   app.post("/api/gemini/parse-quizzes", async (req, res) => {
     try {
       const { text, metadata } = req.body;
@@ -104,7 +105,7 @@ ${text}
 -------------------------`;
 
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-3.5-flash",
+        model: "gemini-flash-latest",
         contents: promptRequest,
         config: {
           systemInstruction,
@@ -256,7 +257,7 @@ ${text}
       }
 
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-3.5-flash",
+        model: "gemini-flash-latest",
         contents: { parts: contents.map(item => typeof item === "string" ? { text: item } : item) },
         config: {
           systemInstruction,
@@ -347,7 +348,7 @@ ${text}
       contents.push({ text: promptRequest });
 
       const response = await generateContentWithRetry(ai, {
-        model: "gemini-3.5-flash",
+        model: "gemini-flash-latest",
         contents: { parts: contents },
         config: {
           systemInstruction,
@@ -360,6 +361,24 @@ ${text}
       console.error("Generate Chapter Content API Error:", error);
       res.status(500).json({ error: error?.message || "فشلت كتابة محتوى الدرس بالذكاء الاصطناعي." });
     }
+  });
+
+  // Catch-all for API routes to ensure they always return JSON and not SPA HTML
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ 
+      error: "المسار غير موجود (endpoint not found)", 
+      method: req.method, 
+      path: req.url 
+    });
+  });
+
+  // Error handling middleware
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Global Server Error:", err);
+    res.status(500).json({ 
+      error: "حدث خطأ غير متوقع في الخادم", 
+      message: err.message || String(err) 
+    });
   });
 
   // Vite middleware for development
