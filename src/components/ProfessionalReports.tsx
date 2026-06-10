@@ -58,6 +58,7 @@ import {
 } from 'recharts';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
+import { SignatureBox } from './SignatureBox';
 
 const getTimestampMs = (updatedAt: any): number => {
   if (!updatedAt) return 0;
@@ -80,9 +81,10 @@ interface ProfessionalReportsProps {
   onSelectTeacher?: (teacher: any) => void;
   calculatePerformance?: (classId: string, subjectId?: string) => number;
   hideStudentDetails?: boolean;
+  externalProfile?: any;
 }
 
-export function ProfessionalReports({ data, evaluations, academicYear, displayYear, activeTerm, onSelectStudent, onClose, filterTeacherId, onFilterTeacherChange, onSelectTeacher, calculatePerformance, hideStudentDetails }: ProfessionalReportsProps) {
+export function ProfessionalReports({ data, evaluations, academicYear, displayYear, activeTerm, onSelectStudent, onClose, filterTeacherId, onFilterTeacherChange, onSelectTeacher, calculatePerformance, hideStudentDetails, externalProfile }: ProfessionalReportsProps) {
   const [activeTab, setActiveTab] = useState<'quizzes' | 'skills' | 'students' | 'teachers'>(hideStudentDetails ? 'teachers' : 'quizzes');
   const [selectedGradeId, setSelectedGradeId] = useState<string>('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -2835,6 +2837,28 @@ export function ProfessionalReports({ data, evaluations, academicYear, displayYe
                             <button onClick={() => setSelectedQuizToManage(null)} className="flex-[1] bg-slate-900 hover:bg-slate-800 text-white rounded-[16px] h-[48px] font-black text-sm transition-colors shadow-sm">
                                إغلاق
                             </button>
+                            {(() => {
+                               const signature = data.quizSignatures?.find(s => s.quizId === selectedQuizToManage.id);
+                               const isCompleted = totalTargetedStudents > 0 && testedCount >= totalTargetedStudents;
+                               const handleSign = async () => {
+                                 if (!externalProfile?.linkedTeacherId) return;
+                                 await firestoreService.saveQuizSignature(selectedQuizToManage.id, externalProfile.linkedTeacherId, externalProfile.name);
+                               };
+                               if (!signature && !isCompleted && externalProfile?.role !== 'teacher') return null;
+                               return (
+                                 <div className="mb-4 text-right">
+                                   <SignatureBox 
+                                     isCompleted={isCompleted}
+                                     onSign={handleSign}
+                                     signature={signature}
+                                     label="توقيع المعلم (للاطلاع)"
+                                     requirementText="متاح بعد اختتام جميع الاختبارات"
+                                     userName={externalProfile?.name || ""}
+                                   />
+                                 </div>
+                               );
+                            })()}
+                            
                             <button 
                                onClick={(e) => {
                                   e.stopPropagation();

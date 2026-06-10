@@ -497,6 +497,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   activeTerm={activeTerm}
                   filterTeacherId={externalProfile.linkedTeacherId}
                   calculatePerformance={calculatePerformance}
+                  externalProfile={externalProfile}
                 />
               </motion.div>
             )}

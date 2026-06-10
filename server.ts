@@ -8,87 +8,114 @@ dotenv.config();
 
 // Helper function to call generateContent with retry on transient errors
 // @ts-ignore
-async function generateContentWithRetry(ai: any, params: any, maxRetries = 4, initialDelay = 1500) {
+/**
+ * Safely parse JSON from a model response, handling potential markdown wrappers
+ */
+function safeJsonParse(text: string) {
+  try {
+    // Remove markdown code blocks if present
+    const cleaned = text.replace(/```json\n?|```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("JSON Parse Error. Original text:", text);
+    throw new Error("فشل في معالجة البيانات المستلمة من الذكاء الاصطناعي (تنسيق غير صالح)");
+  }
+}
+
+async function generateContentWithRetry(ai: any, params: any, maxRetries = 5, initialDelay = 1500) {
   let attempt = 0;
-  // Use recommended primary model from skill
-  const originalModel = params.model || "gemini-3.5-flash";
-  
-  // Strict list of valid models from current skill guidance
+  // Recommended models hierarchy from skill
   const fallbackModels = [
     "gemini-3.5-flash",        // Primary for basic text/JSON
-    "gemini-3.1-pro-preview",   // More capable if flash fails
-    "gemini-3.1-flash-lite",    // Lightweight fallback
-    "gemini-flash-latest"       // Alias for latest flash
+    "gemini-flash-latest",     // Reliable standard flash
+    "gemini-3.1-flash-lite",    // Lightweight backup
+    "gemini-3.1-pro-preview"    // High-reasoning (paid/lower quota)
   ];
 
-  // Map to exclude definitely failed models in this lifecycle to avoid repeated 404s
   const badModels = new Set<string>();
+  const originalModel = params.model || fallbackModels[0];
 
   while (attempt <= maxRetries) {
-    // Pick the best available model
-    let currentModel = params.model || originalModel;
+    // Select model: Start with original, then cycle through fallbacks
+    let currentModel = (attempt === 0) ? originalModel : fallbackModels[attempt % fallbackModels.length];
     
-    // If current model is known bad (404), rotate to next available
-    if (badModels.has(currentModel)) {
-      const nextIdx = attempt % fallbackModels.length;
-      currentModel = fallbackModels[nextIdx];
-      params.model = currentModel;
+    // Skip models already known to be unavailable (404) in this specific request cycle
+    let skipCount = 0;
+    while (badModels.has(currentModel) && skipCount < fallbackModels.length) {
+      currentModel = fallbackModels[(attempt + skipCount) % fallbackModels.length];
+      skipCount++;
     }
+    
+    params.model = currentModel;
 
     try {
-      console.log(`[Gemini API] Target: ${currentModel} (Attempt ${attempt + 1}/${maxRetries + 1})`);
+      console.log(`[Gemini API] Requesting ${currentModel} (Attempt ${attempt + 1}/${maxRetries + 1})`);
       const result = await ai.models.generateContent(params);
+      
+      // If result is empty or invalid, treat as transient error if more retries left
+      if (!result || (!result.text && !result.functionCalls)) {
+        throw new Error("استجابة فارغة من خادم الذكاء الاصطناعي");
+      }
+      
       return result;
     } catch (error: any) {
       attempt++;
       const errorMsg = String(error?.stack || error?.message || error || "Unknown Error");
-      console.error(`[Gemini API] Error on ${currentModel}: ${errorMsg.substring(0, 350)}`);
+      console.error(`[Gemini API] Error on ${currentModel}: ${errorMsg.substring(0, 400)}`);
       
-      // 404 = Model Not Found or Not Supported
+      // Check if it's a 404 (Model Not Found) or 400 (Invalid Model)
       const isNotFound = 
         errorMsg.includes("404") || 
         errorMsg.includes("NOT_FOUND") || 
         errorMsg.includes("is not found") || 
         errorMsg.includes("not supported") ||
-        errorMsg.includes("invalid model");
+        errorMsg.includes("invalid model") ||
+        errorMsg.includes("400"); // Sometimes bad model names return 400
 
       if (isNotFound) {
-        console.warn(`[Gemini API] Model ${currentModel} is unavailable (404). Blacklisting for this session.`);
+        console.warn(`[Gemini API] Blacklisting ${currentModel} - not found in this project/region.`);
         badModels.add(currentModel);
       }
 
-      // 429 = Quota, 503 = Overloaded, 500 = Transient
-      const isQuota = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("ResourceExhausted") || errorMsg.includes("limit");
-      const isTransient = isQuota || errorMsg.includes("503") || errorMsg.includes("500") || errorMsg.includes("overloaded") || errorMsg.includes("high demand") || errorMsg.includes("Service Unavailable");
+      // 429 = Quota, 503 = Overloaded, 504 = Timeout, 500 = Internal
+      const isQuota = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("ResourceExhausted");
+      const isTransient = isQuota || 
+                         errorMsg.includes("503") || 
+                         errorMsg.includes("500") || 
+                         errorMsg.includes("504") || 
+                         errorMsg.includes("overloaded") || 
+                         errorMsg.includes("deadline") ||
+                         errorMsg.includes("Service Unavailable");
 
       if (attempt <= maxRetries && (isTransient || isNotFound)) {
-        // Switch to next model in list
-        const nextModel = fallbackModels[attempt % fallbackModels.length];
-        params.model = nextModel;
-
-        // Exponential backoff
-        let delay = initialDelay * Math.pow(2, attempt - 1);
+        // Exponential backoff with jitter
+        let delay = initialDelay * Math.pow(2, attempt - 1) + (Math.random() * 500);
         if (isQuota) {
-          delay += 2500; // Extra buffer for rate limits
-          console.warn(`[Gemini API] Rate limit hit. Backoff: ${delay}ms`);
+          delay += 3000; // Aggressive backoff for rate limits
+          console.warn(`[Gemini API] Quota hit. Waiting ${delay}ms before switching/retrying.`);
+        } else {
+          console.log(`[Gemini API] Transient error. Waiting ${delay}ms...`);
         }
 
-        await new Promise(resolve => setTimeout(resolve, Math.min(delay, 20000)));
+        await new Promise(resolve => setTimeout(resolve, Math.min(delay, 25000)));
         continue;
       }
 
-      // Exhausted or unrecoverable
+      // Special Arabic error messages for common unrecoverable failures
       if (isQuota) {
-        throw new Error("عذراً، لقد تجاوزت حد الاستخدام المتاح للذكاء الاصطناعي حالياً (Quota Exceeded). يرجى المحاولة مرة أخرى بعد دقيقتين.");
+        throw new Error("عذراً، لقد استنفدت حصة الاستخدام (Quota) المتاحة للذكاء الاصطناعي حالياً. يرجى الانتظار لمدة دقيقتين والمحاولة مجدداً.");
       }
-      if (errorMsg.includes("503") || errorMsg.includes("UNAVAILABLE")) {
-        throw new Error("تعتذر خدمة الذكاء الاصطناعي عن الاستجابة حالياً بسبب ضغط الطلبات. يرجى المحاولة مرة أخرى لاحقاً.");
+      if (errorMsg.includes("503") || errorMsg.includes("overloaded")) {
+        throw new Error("خوادم الذكاء الاصطناعي تعاني من ضغط عالٍ حالياً. يرجى المحاولة مرة أخرى بعد قليل.");
+      }
+      if (errorMsg.includes("401") || errorMsg.includes("API_KEY_INVALID")) {
+        throw new Error("مفتاح API الخاص بالذكاء الاصطناعي غير صحيح أو غير صالح. يرجى التحقق من إعدادات الربط.");
       }
       
       throw error;
     }
   }
-  throw new Error("فشلت محاولات الاتصال بالذكاء الاصطناعي. يرجى التأكد من استقرار الإنترنت والمحاولة لاحقاً.");
+  throw new Error("فشل الاتصال بخدمة الذكاء الاصطناعي بعد عدة محاولات. يرجى التأكد من جودة الاتصال والمحاولة لاحقاً.");
 }
 
 async function startServer() {
@@ -221,7 +248,7 @@ ${text}
       });
 
       const resultText = response.text || "[]";
-      const parsedQuizzes = JSON.parse(resultText);
+      const parsedQuizzes = safeJsonParse(resultText);
 
       res.json({ success: true, quizzes: parsedQuizzes });
     } catch (error: any) {
@@ -332,7 +359,7 @@ ${text}
       });
 
       const resultText = response.text || "[]";
-      const generatedQuestions = JSON.parse(resultText);
+      const generatedQuestions = safeJsonParse(resultText);
 
       res.json({ success: true, questions: generatedQuestions });
     } catch (error: any) {

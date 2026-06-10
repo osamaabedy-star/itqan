@@ -257,6 +257,7 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                   filterTeacherId={filterTeacherId}
                   onFilterTeacherChange={setFilterTeacherId}
                   hideStudentDetails={true}
+                  externalProfile={externalProfile}
                 />
               </motion.div>
             )}
